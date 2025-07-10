@@ -17,8 +17,6 @@
 //
 
 // user include files
-#include "ap_fixed.h"
-
 #include "FWCore/Framework/interface/Frameworkfwd.h"
 #include "FWCore/Framework/interface/one/EDAnalyzer.h"
 
@@ -45,10 +43,6 @@
 #include "MagneticField/Records/interface/IdealMagneticFieldRecord.h"
 
 #include "L1Trigger/Phase2L1ParticleFlow/interface/L1TPFUtils.h"
-#include "L1Trigger/Phase2L1ParticleFlow/interface/common/inversion.h"
-#include "L1Trigger/Phase2L1ParticleFlow/interface/common/log.h"
-
-
 #include "CommonTools/Utils/interface/StringCutObjectSelector.h"
 
 #include "DataFormats/L1TParticleFlow/interface/PFCandidate.h"
@@ -79,6 +73,8 @@
 #include "DataFormats/L1TrackTrigger/interface/TTTrack_TrackWord.h"
 #include "DataFormats/L1TParticleFlow/interface/datatypes.h"
 #include "L1Trigger/Phase2L1ParticleFlow/interface/jetmet/L1SeedConePFJetEmulator.h"
+
+const bool debug = false;
 
 // some tools to fix inputs or calculate them
 namespace jettools{
@@ -177,6 +173,8 @@ class JetNTuplizer : public edm::one::EDAnalyzer<edm::one::SharedResources,edm::
         edm::EDGetTokenT<edm::ValueMap<float>> const bjetids_;
         // const edm::InputTag pileupInfoTag_;
         TTree *tree_;
+        TH1F *h_GenJet_eta;
+        TH1F *h_GenJet_eta_matched;
         uint32_t run_, lumi_; uint64_t event_;
          //   float bZ_;
 
@@ -205,6 +203,8 @@ class JetNTuplizer : public edm::one::EDAnalyzer<edm::one::SharedResources,edm::
     std::vector<reco::GenParticle> alltaus_;
     std::vector<reco::GenParticle> Bhadron_;
     std::vector<reco::GenParticle> Bhadron_daughter_;
+    std::vector<reco::GenParticle> LLP_;
+    std::vector<reco::GenParticle> LLP_daughter_;
 
     // --------------------
     // from PNET
@@ -294,6 +294,19 @@ class JetNTuplizer : public edm::one::EDAnalyzer<edm::one::SharedResources,edm::
 
 
     // --------------------
+    float jet_genmatch_llp_pt_;
+    float jet_genmatch_llp_eta_;
+    float jet_genmatch_llp_phi_;
+   // float jet_genmatch_llp2_pt_;
+   // float jet_genmatch_llp2_eta_;
+   // float jet_genmatch_llp2_phi_;
+   // float jet_genmatch_llp3_pt_;
+   // float jet_genmatch_llp3_eta_;
+   // float jet_genmatch_llp3_phi_;
+   // float jet_genmatch_llp4_pt_;
+   // float jet_genmatch_llp4_eta_;
+   // float jet_genmatch_llp4_phi_;
+
     float jet_genmatch_pt_;
     float jet_genmatch_eta_;
     float jet_genmatch_phi_;
@@ -306,31 +319,6 @@ class JetNTuplizer : public edm::one::EDAnalyzer<edm::one::SharedResources,edm::
     // jet pf candidates
     unsigned int njet_pfcand_;
     std::vector<float> jet_pfcand_pt;
-
-    std::vector<float> jet_puppicand_pt; 
-    std::vector<float> jet_puppicand_pt_rel; 
-    std::vector<float> jet_puppicand_pt_log; 
-    std::vector<float> jet_puppicand_float_pt_log;
-    std::vector<float> jet_puppicand_deta; 
-    std::vector<float> jet_puppicand_dphi; 
-    std::vector<float> jet_puppicand_mass; 
-    std::vector<float> jet_puppicand_isPhoton; 
-    std::vector<float> jet_puppicand_isElectronPlus; 
-    std::vector<float> jet_puppicand_isElectronMinus; 
-    std::vector<float> jet_puppicand_isMuonPlus; 
-    std::vector<float> jet_puppicand_isMuonMinus; 
-    std::vector<float> jet_puppicand_isNeutralHadron; 
-    std::vector<float> jet_puppicand_isHadronPlus; 
-    std::vector<float> jet_puppicand_isHadronMinus; 
-    std::vector<float> jet_puppicand_z0; 
-    std::vector<float> jet_puppicand_dxy; 
-    std::vector<float> jet_puppicand_is_filled; 
-    std::vector<float> jet_puppicand_puppi_weight; 
-    std::vector<float> jet_puppicand_emid; 
-    std::vector<float> jet_puppicand_quality; 
-    std::vector<float> jet_puppicand_charge; 
-    std::vector<float> jet_puppicand_id; 
-
     std::vector<float> jet_pfcand_pt_phys;
     std::vector<float> jet_pfcand_pt_rel;
     std::vector<float> jet_pfcand_pt_rel_phys;
@@ -429,6 +417,8 @@ JetNTuplizer::JetNTuplizer(const edm::ParameterSet& iConfig) :
 {
     usesResource("TFileService");
     edm::Service<TFileService> fs;
+    h_GenJet_eta = fs->make<TH1F>("h_GenJet_eta", "h_GenJet_eta", 80, -5, 5);
+    h_GenJet_eta_matched = fs->make<TH1F>("h_GenJet_eta_matched", "h_GenJet_eta_matched", 80, -5, 5);
     tree_ = fs->make<TTree>("Jets","Jets");
     // tree_->Branch("run",  &run_,  "run/i");
     // tree_->Branch("lumi", &lumi_, "lumi/i");
@@ -484,6 +474,19 @@ JetNTuplizer::JetNTuplizer(const edm::ParameterSet& iConfig) :
     tree_->Branch("jet_genmatch_lep_vis_pt", &jet_genmatch_lep_vis_pt_);
     tree_->Branch("jet_genmatch_lep_dR", &jet_genmatch_lep_dR_);
 
+    tree_->Branch("jet_genmatch_llp_pt",  &jet_genmatch_llp_pt_);
+    tree_->Branch("jet_genmatch_llp_eta", &jet_genmatch_llp_eta_);
+    tree_->Branch("jet_genmatch_llp_phi", &jet_genmatch_llp_phi_);
+    //tree_->Branch("jet_genmatch_llp2_pt",  &jet_genmatch_llp2_pt_);
+    //tree_->Branch("jet_genmatch_llp2_eta", &jet_genmatch_llp2_eta_);
+    //tree_->Branch("jet_genmatch_llp2_phi", &jet_genmatch_llp2_phi_);
+    //tree_->Branch("jet_genmatch_llp3_pt",  &jet_genmatch_llp3_pt_);
+    //tree_->Branch("jet_genmatch_llp3_eta", &jet_genmatch_llp3_eta_);
+    //tree_->Branch("jet_genmatch_llp3_phi", &jet_genmatch_llp3_phi_);
+    //tree_->Branch("jet_genmatch_llp4_pt",  &jet_genmatch_llp4_pt_);
+    //tree_->Branch("jet_genmatch_llp4_eta", &jet_genmatch_llp4_eta_);
+    //tree_->Branch("jet_genmatch_llp4_phi", &jet_genmatch_llp4_phi_);
+
     tree_->Branch("jet_genmatch_pt", &jet_genmatch_pt_);
     tree_->Branch("jet_genmatch_eta", &jet_genmatch_eta_);
     tree_->Branch("jet_genmatch_phi", &jet_genmatch_phi_);
@@ -498,31 +501,6 @@ JetNTuplizer::JetNTuplizer(const edm::ParameterSet& iConfig) :
     tree_->Branch("jet_jecmatch_dR", &jet_jecmatch_dR_);
     tree_->Branch("jet_pt_corr", &jet_pt_corr_);
 
-    tree_->Branch("jet_puppicand_pt", &jet_puppicand_pt, njet_pfcand_); 
-    tree_->Branch("jet_puppicand_pt_rel",&jet_puppicand_pt_rel, njet_pfcand_);
-    tree_->Branch("jet_puppicand_pt_log",&jet_puppicand_pt_log, njet_pfcand_); 
-    tree_->Branch("jet_puppicand_float_pt_log",&jet_puppicand_float_pt_log, njet_pfcand_);
-    tree_->Branch("jet_puppicand_deta",&jet_puppicand_deta, njet_pfcand_); 
-    tree_->Branch("jet_puppicand_dphi",&jet_puppicand_dphi, njet_pfcand_); 
-    tree_->Branch("jet_puppicand_mass",&jet_puppicand_mass, njet_pfcand_); 
-    tree_->Branch("jet_puppicand_isPhoton",&jet_puppicand_isPhoton, njet_pfcand_); 
-    tree_->Branch("jet_puppicand_isElectronPlus",&jet_puppicand_isElectronPlus, njet_pfcand_); 
-    tree_->Branch("jet_puppicand_isElectronMinus",&jet_puppicand_isElectronMinus, njet_pfcand_); 
-    tree_->Branch("jet_puppicand_isMuonPlus",&jet_puppicand_isMuonPlus, njet_pfcand_); 
-    tree_->Branch("jet_puppicand_isMuonMinus",&jet_puppicand_isMuonMinus, njet_pfcand_); 
-    tree_->Branch("jet_puppicand_isNeutralHadron",&jet_puppicand_isNeutralHadron, njet_pfcand_); 
-    tree_->Branch("jet_puppicand_isHadronPlus",&jet_puppicand_isHadronPlus, njet_pfcand_); 
-    tree_->Branch("jet_puppicand_isHadronMinus",&jet_puppicand_isHadronMinus, njet_pfcand_); 
-    tree_->Branch("jet_puppicand_z0",&jet_puppicand_z0, njet_pfcand_); 
-    tree_->Branch("jet_puppicand_dxy",&jet_puppicand_dxy, njet_pfcand_); 
-    tree_->Branch("jet_puppicand_is_filled",&jet_puppicand_is_filled, njet_pfcand_); 
-    tree_->Branch("jet_puppicand_puppi_weight",&jet_puppicand_puppi_weight, njet_pfcand_); 
-    tree_->Branch("jet_puppicand_emid",&jet_puppicand_emid, njet_pfcand_); 
-    tree_->Branch("jet_puppicand_quality",&jet_puppicand_quality, njet_pfcand_); 
-    tree_->Branch("jet_puppicand_charge",&jet_puppicand_charge, njet_pfcand_); 
-    tree_->Branch("jet_puppicand_id",&jet_puppicand_id, njet_pfcand_); 
-
-
     tree_->Branch("jet_npfcand", &njet_pfcand_);
     tree_->Branch("jet_pfcand_isfilled", &jet_pfcand_isfilled, njet_pfcand_);
     tree_->Branch("jet_pfcand_pt", &jet_pfcand_pt, njet_pfcand_);
@@ -536,7 +514,7 @@ JetNTuplizer::JetNTuplizer(const edm::ParameterSet& iConfig) :
     tree_->Branch("jet_pfcand_pt_rel_log", &jet_pfcand_pt_rel_log, njet_pfcand_);
     tree_->Branch("jet_pfcand_eta", &jet_pfcand_eta, njet_pfcand_);
     tree_->Branch("jet_pfcand_eta_phys", &jet_pfcand_eta_phys, njet_pfcand_);
-    tree_->Branch("jet_pfcandid", &jet_pfcand_phi, njet_pfcand_);
+    tree_->Branch("jet_pfcand_phi", &jet_pfcand_phi, njet_pfcand_);
     tree_->Branch("jet_pfcand_phi_phys", &jet_pfcand_phi_phys, njet_pfcand_);
     tree_->Branch("jet_pfcand_mass", &jet_pfcand_mass, njet_pfcand_);
     tree_->Branch("jet_pfcand_energy", &jet_pfcand_energy, njet_pfcand_);
@@ -635,6 +613,8 @@ JetNTuplizer::beginJob()
 void
 JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 {
+    if(debug) std::cout<<"@@@@@@@@@@@@@@@@@@@@@@@@   NEW EVENT @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"<<std::endl;
+
     run_  = iEvent.id().run();
     lumi_ = iEvent.id().luminosityBlock();
     event_ = iEvent.id().event();
@@ -692,16 +672,23 @@ JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 
     // gen jets
     std::vector<reco::GenJetRef> jetv_gen;  
+    int i = 0;
+    if(debug) std::cout<<"Starting number of Genjets: "<<genjets->size()<<std::endl;
     if(genjets.isValid()){
         for (auto jets_iter = genjets->begin(); jets_iter != genjets->end(); ++jets_iter) {                                                                                                   
         reco::GenJetRef jref (genjets, jets_iter - genjets->begin());                                                                                                                      
-        jetv_gen.push_back(jref);                                                                                                                                                              
+        jetv_gen.push_back(jref);
+        if( jets_iter->pt()>40.  && jets_iter->pt()<100.) h_GenJet_eta->Fill(jets_iter->eta());
+        if (debug) std::cout<<"GenJet_"<<i<<" pt: "<<jetv_gen[i]->pt()<<"   eta: "<<jetv_gen[i]->eta()<<"   phi:  "<<jetv_gen[i]->phi()<<std::endl;
+        i++;
         }
         sort(jetv_gen.begin(), jetv_gen.end(), genJetRefSorter);
     }
+    if (debug) std::cout<<"Final number of GenJets: "<<jetv_gen.size()<<std::endl;
 
     // reco jets
     std::vector<l1t::PFJetRef> jetv_l1;
+    if (debug) std::cout<<"Starting number of jets: "<<scjets->size()<<std::endl;
     for (auto jets_iter = scjets->begin(); jets_iter != scjets->end(); ++jets_iter) {                                                                                                   
         l1t::PFJetRef jref(scjets, jets_iter - scjets->begin());                                                                                                                
         if (jref->pt() < jetPtMin_) continue;
@@ -709,7 +696,7 @@ JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
         if (fabs(jref->eta()) < jetEtaMin_) continue;                 
         jetv_l1.push_back(jref);                                                                                                                                                              
     }
-
+    if (debug) std::cout<<"Final number of Jets: "<<jetv_l1.size()<<std::endl;
      // for event level plots, always store something
      if (jetv_l1.size() < 1){
              jetv_l1.clear();
@@ -760,8 +747,8 @@ JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
     }
     sort(muonv_l1.begin(), muonv_l1.end(), muonRefSorter);
     
+    std::vector<bool> matched(jetv_gen.size(), false);        
     // loop over reco jets
-
     for (size_t i = 0; i < jetv_l1.size(); i++) {
         l1ct::Jet ctJet = l1ct::Jet::unpack(jetv_l1[i]->getHWJetCT());
         std::vector<float> tagScores = jetv_l1[i]->getTagScores();
@@ -814,19 +801,30 @@ JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
         // jet_pz_ = jetv_l1[i]->pz();
 
         jet_bjetscore_ = (*bjetIDhandle)[jetv_l1[i]];
-        
         // match to GEN
         int   pos_matched = -1;
         float minDR = dRJetGenMatch_;
         for(size_t igen = 0; igen < jetv_gen.size(); igen++){
+            if(matched[igen]) continue;
+            if(!(jetv_gen[igen]->pt()>40. && jetv_gen[igen]->pt()<100.)) continue;
             if(jetv_l1[i]->pt() <= 0.1 * jetv_gen[igen]->pt()) continue;
             if(reco::deltaR(jetv_gen[igen]->p4(),jetv_l1[i]->p4()) < minDR){
                 pos_matched = igen;
                 minDR = reco::deltaR(jetv_gen[igen]->p4(),jetv_l1[i]->p4());
+                matched[igen] = true;
+                if(debug){
+                std::cout<<"**************************************************************************"<<std::endl;
+                std::cout<<"Found Jet Match Event: "<<event_<<"   DR: "<<minDR<<std::endl;
+                std::cout<<"pt1: " <<jetv_l1[i]->pt()  <<"    pt_gen: "<<jetv_gen[igen]->pt()<<std::endl;
+                std::cout<<"eta1: "<<jetv_l1[i]->eta()<<"    eta_gen: "<<jetv_gen[igen]->eta()<<std::endl;
+                std::cout<<"phi1: "<<jetv_l1[i]->phi()<<"    phi_gen: "<<jetv_gen[igen]->phi()<<std::endl;
+                std::cout<<"**************************************************************************"<<std::endl;
+                }
             }
         }
         
         if(pos_matched >= 0){
+            h_GenJet_eta_matched->Fill(jetv_gen[pos_matched]->eta());
             jet_genmatch_pt_ = jetv_gen[pos_matched]->pt();
             jet_genmatch_eta_ = jetv_gen[pos_matched]->eta();
             jet_genmatch_phi_ = jetv_gen[pos_matched]->phi();
@@ -844,7 +842,37 @@ JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
             jet_genmatch_hflav_ = 0;
             jet_genmatch_pflav_ = 0;
         }
+        
+        if (debug) std::cout<<"Jet_"<<i<<" pt: "<<jetv_l1[i]->pt()<<"   eta: "<<jetv_l1[i]->eta()<<"   phi:  "<<jetv_l1[i]->phi()<<std::endl;
+        // match to LLP
+        pos_matched = -1;
+        minDR = dRJetGenMatch_;
+        for(size_t igen = 0; igen < LLP_daughter_.size(); igen++){
+            //if(jetv_l1[i]->pt() <= 0.1 * LLP_daughter_[igen].pt()) continue;
+            if(reco::deltaR(LLP_daughter_[igen].p4(),jetv_l1[i]->p4()) < minDR){
+                pos_matched = igen;
+                minDR = reco::deltaR(LLP_daughter_[igen].p4(),jetv_l1[i]->p4());
+                if (debug) {
+                   std::cout<<"**************************************************************************"<<std::endl;
+                   std::cout<<"Found Match Event: "<<event_<<"   DR: "<<minDR<<"    SizeDaughters: "<<LLP_daughter_.size()<<std::endl;
+                   std::cout<<"pt1: "<<jetv_l1[i]->pt()  <<"    ptd: " <<LLP_daughter_[igen].pt()<<std::endl;
+                   std::cout<<"eta1: "<<jetv_l1[i]->eta()<<"    etad: "<<LLP_daughter_[igen].eta()<<std::endl;
+                   std::cout<<"phi1: "<<jetv_l1[i]->phi()<<"    phid: "<<LLP_daughter_[igen].phi()<<std::endl;
+                   std::cout<<"**************************************************************************"<<std::endl;
+                }
+            }
+        }
 
+        if(pos_matched == 0){
+           jet_genmatch_llp_pt_  = jetv_gen[pos_matched]->pt();
+           jet_genmatch_llp_eta_ = jetv_gen[pos_matched]->eta();
+           jet_genmatch_llp_phi_ = jetv_gen[pos_matched]->phi();
+        }
+        else{
+           jet_genmatch_llp_pt_  = 0;
+           jet_genmatch_llp_eta_ = 0;
+           jet_genmatch_llp_phi_ = 0;
+        }
 
         // matching with gen-leptons (muons/electrons/hadronic taus)
         minDR = 1000;
@@ -1037,31 +1065,8 @@ JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
         // from PNET ntupler
         std::sort(vectorOfConstituents.begin(),vectorOfConstituents.end(),l1PFCandidateSorter);
     
-        jet_puppicand_pt.clear(); 
-        jet_puppicand_pt_rel.clear(); 
-        jet_puppicand_pt_log.clear(); 
-        jet_puppicand_float_pt_log.clear();
-        jet_puppicand_deta.clear(); 
-        jet_puppicand_dphi.clear(); 
-        jet_puppicand_mass.clear(); 
-        jet_puppicand_isPhoton.clear(); 
-        jet_puppicand_isElectronPlus.clear(); 
-        jet_puppicand_isElectronMinus.clear(); 
-        jet_puppicand_isMuonPlus.clear(); 
-        jet_puppicand_isMuonMinus.clear(); 
-        jet_puppicand_isNeutralHadron.clear(); 
-        jet_puppicand_isHadronPlus.clear(); 
-        jet_puppicand_isHadronMinus.clear(); 
-        jet_puppicand_z0.clear(); 
-        jet_puppicand_dxy.clear(); 
-        jet_puppicand_is_filled.clear(); 
-        jet_puppicand_puppi_weight.clear(); 
-        jet_puppicand_emid.clear(); 
-        jet_puppicand_quality.clear(); 
-        jet_puppicand_charge.clear(); 
-        jet_puppicand_id.clear(); 
 
-        jet_pfcand_pt.clear();    
+        jet_pfcand_pt.clear();
         jet_pfcand_pt_phys.clear();
         jet_pfcand_pt_rel.clear();
         jet_pfcand_pt_rel_phys.clear();
@@ -1141,64 +1146,11 @@ JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
         jet_pfcand_cluster_egvspu.clear();
 
         njet_pfcand_ = 0;
-        // for(auto const & pfcand : vectorOfConstituents){
-        // for(l1t::PFCandidate const & pfcand : vectorOfConstituents){
         for(size_t ipfcand = 0; ipfcand < vectorOfConstituents.size(); ipfcand++){
         
             l1t::PFCandidate pfcand = vectorOfConstituents.at(ipfcand);
             if(pfcand.pt() < jetPFCandidatePtMin_) continue;
             njet_pfcand_++;
-
-            // PUPPI stuff for training
-            l1ct::PuppiObj puppicand = l1ct::PuppiObj::unpack(pfcand.encodedPuppi64());
-
-            constexpr int INV_LUT_SIZE = 256;
-            L1TSC4NGJetID::inputtype inv_jet_pt = l1ct::invert_with_shift<L1TSC4NGJetID::inputtype, L1TSC4NGJetID::inputtype, INV_LUT_SIZE>(jet_pt_);
-            
-            constexpr int LOG_LUT_SIZE = 2048;
-            L1TSC4NGJetID::inputtype log_jet_pt = l1ct::log_with_shift<l1ct::pt_t,L1TSC4NGJetID::inputtype, LOG_LUT_SIZE>(puppicand.hwPt);
-
-            L1SCJetEmu::detaphi_t puppi_dphi(puppicand.hwPhi - jet_phi_);
-            // phi wrap
-            L1SCJetEmu::detaphi_t puppi_dphi0 = puppi_dphi > L1SCJetEmu::detaphi_t(l1ct::Scales::INTPHI_PI)
-                                      ? L1SCJetEmu::detaphi_t(l1ct::Scales::INTPHI_TWOPI - puppi_dphi)
-                                      : L1SCJetEmu::detaphi_t(puppi_dphi);
-            L1SCJetEmu::detaphi_t puppi_dphi1 = puppi_dphi < L1SCJetEmu::detaphi_t(-l1ct::Scales::INTPHI_PI)
-                                      ? L1SCJetEmu::detaphi_t(l1ct::Scales::INTPHI_TWOPI + puppi_dphi)
-                                      : L1SCJetEmu::detaphi_t(puppi_dphi);
-            float puppi_dphiw = puppi_dphi > L1SCJetEmu::detaphi_t(0) ? puppi_dphi0 : puppi_dphi1;
-
-            float puppi_massCand  = L1TSC4NGJet::candidate_mass<float>(puppicand);
-
-            jet_puppicand_pt.push_back(puppicand.hwPt);
-            jet_puppicand_pt_rel.push_back(float(L1TSC4NGJetID::inputtype(puppicand.hwPt) * inv_jet_pt));
-
-            jet_puppicand_pt_log.push_back(log_jet_pt);
-            jet_puppicand_float_pt_log.push_back(std::log(float(puppicand.hwPt)));
-
-            jet_puppicand_deta.push_back(jet_eta_ - puppicand.hwEta);
-            jet_puppicand_dphi.push_back(puppi_dphiw);
-
-            jet_puppicand_mass.push_back(puppi_massCand);
-
-            jet_puppicand_isPhoton.push_back(puppicand.hwId.bits == l1ct::ParticleID::PHOTON);
-            jet_puppicand_isElectronPlus.push_back(puppicand.hwId.bits == l1ct::ParticleID::ELEPLUS);
-            jet_puppicand_isElectronMinus.push_back(puppicand.hwId.bits == l1ct::ParticleID::ELEMINUS);
-            jet_puppicand_isMuonPlus.push_back(puppicand.hwId.bits == l1ct::ParticleID::MUPLUS);
-            jet_puppicand_isMuonMinus.push_back(puppicand.hwId.bits == l1ct::ParticleID::MUMINUS);
-            jet_puppicand_isNeutralHadron.push_back(puppicand.hwId.bits == l1ct::ParticleID::HADZERO);
-            jet_puppicand_isHadronPlus.push_back(puppicand.hwId.bits == l1ct::ParticleID::HADPLUS);
-            jet_puppicand_isHadronMinus.push_back(puppicand.hwId.bits == l1ct::ParticleID::HADMINUS);
-
-            jet_puppicand_z0.push_back(puppicand.hwId.charged() ? float(puppicand.hwZ0() * l1ct::Scales::Z0_LSB) : 0.0);
-            jet_puppicand_dxy.push_back(puppicand.hwId.charged() ? float(puppicand.hwDxy() * l1ct::Scales::DXY_LSB) : 0.0);
-            jet_puppicand_is_filled.push_back(1);
-            jet_puppicand_puppi_weight.push_back(puppicand.hwId.neutral() ? float(puppicand.hwPuppiW()) : 0.0); 
-            jet_puppicand_emid.push_back(puppicand.hwId.neutral() ? float(puppicand.hwEmID()) : 0.0);
-            jet_puppicand_quality.push_back(puppicand.hwId.charged() ? float(puppicand.hwTkQuality()) : 0.0);
-            jet_puppicand_charge.push_back(puppicand.hwId.charged());
-            jet_puppicand_id.push_back(puppicand.hwId.bits);
-
 
             // jet_pfcand_pt.push_back(pfcand.pt());
             jet_pfcand_pt.push_back(float(pfcand.hwPt()));
@@ -1220,7 +1172,6 @@ JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
             jet_pfcand_phi.push_back(float(pfcand.hwPhi()));
             jet_pfcand_phi_phys.push_back(pfcand.phi());
 
-            
             float massCand = 0.13f;
             if (abs(pfcand.charge())) {
                 if ((pfcand.id() == l1t::PFCandidate::Muon)) {
@@ -1380,9 +1331,12 @@ JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
         }
 
         tree_->Fill();
+        //h_GenJet_eta->Write();
     }
 
-
+    for(int i = 0; i< h_GenJet_eta_matched->GetNbinsX(); i++){
+      if( h_GenJet_eta_matched->GetBinContent(i) > h_GenJet_eta->GetBinContent(i) ) std::cout<<"~~~~~~~~~~~ Found issue: "<< event_<<std::endl;
+    }
 }
 
 
@@ -1398,6 +1352,8 @@ void JetNTuplizer::fill_genParticles(const edm::Event& iEvent)
     alltaus_.clear();
     Bhadron_.clear();
     Bhadron_daughter_.clear();
+    LLP_.clear();
+    LLP_daughter_.clear();
 
     // Generator-level information (GEN particles)
     gen_particle_pt.clear();
@@ -1430,7 +1386,7 @@ void JetNTuplizer::fill_genParticles(const edm::Event& iEvent)
     {
         edm::Handle<reco::GenParticleCollection> genParticles;
         iEvent.getByToken(genparticles_, genParticles);
-
+        if (debug) std::cout<<"before first Gen Loop"<<std::endl;
         for (const reco::Candidate &genC : *genParticles){
             const reco::GenParticle &gen = static_cast< const reco::GenParticle &>(genC);
             if((abs(gen.pdgId())>500&&abs(gen.pdgId())<600)||(abs(gen.pdgId())>5000&&abs(gen.pdgId())<6000)){
@@ -1487,6 +1443,33 @@ void JetNTuplizer::fill_genParticles(const edm::Event& iEvent)
             }
         }
 
+        //LLP
+        if (debug) std::cout<<"About to do LLP loop"<<std::endl;
+        int nLLP=0;
+        int ndaughter=0;
+        for (const reco::Candidate &genC : *genParticles){
+            //std::cout<<"ID: "<<genC.pdgId()<<"   Status:"<<genC.status()<<std::endl;
+            const reco::GenParticle &gen = static_cast< const reco::GenParticle &>(genC);
+            if(abs(gen.pdgId()) == 25  && abs(gen.status()) == 22){
+                LLP_.push_back(gen);
+                nLLP++;
+                for(unsigned i = 0; i<gen.numberOfDaughters(); i++){
+                    const reco::GenParticle &daughter_ = static_cast< const reco::GenParticle &>(*(gen.daughter(i)));
+                    if( abs(daughter_.status()) == 23){
+                       LLP_daughter_.push_back(daughter_);
+                       ndaughter++;
+                    }
+                }
+            }
+        }
+        if (debug) {
+           std::cout<<event_<<"  Number of LLPs: "<<nLLP<<"   Number of daughters: "<<ndaughter<<"   DaughterSize: "<<LLP_daughter_.size()<<std::endl;
+           std::cout<<"---- Print daughter info ----"<<std::endl;
+           for(unsigned i = 0; i<LLP_daughter_.size(); i++){
+             std::cout<<i<<" pt: "<<LLP_daughter_[i].pt()<<"   eta: "<<LLP_daughter_[i].eta()<<"   phi:  "<<LLP_daughter_[i].phi()<<std::endl;
+           }
+           std::cout<<"---- Print daughter info end ----"<<std::endl;
+        }
         // ---------------------------------------
         // from PNET
 

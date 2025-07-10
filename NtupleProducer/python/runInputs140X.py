@@ -25,7 +25,8 @@ process.load('L1Trigger.L1THGCal.hgcalTriggerPrimitives_cff')
 process.source = cms.Source("PoolSource",
     fileNames = cms.untracked.vstring(
         # 'file:/data/cerminar/Phase2Spring23DIGIRECOMiniAOD/DoubleElectron_FlatPt-1To100-gun/GEN-SIM-DIGI-RAW-MINIAOD/PU200_Trk1GeV_131X_mcRun4_realistic_v5-v1/c699a773-9875-40c9-83b7-5a3c27f90bfd.root',
-        '/store/mc/Phase2Spring24DIGIRECOMiniAOD/TTToSemileptonic_TuneCP5_14TeV-powheg-pythia8/GEN-SIM-DIGI-RAW-MINIAOD/PU200_Trk1GeV_140X_mcRun4_realistic_v4-v2/2820000/5b6178a7-19bf-4f7f-af63-5bab03393e54.root',        
+        #'/store/mc/Phase2Spring24DIGIRECOMiniAOD/TTToSemileptonic_TuneCP5_14TeV-powheg-pythia8/GEN-SIM-DIGI-RAW-MINIAOD/PU200_Trk1GeV_140X_mcRun4_realistic_v4-v2/2820000/5b6178a7-19bf-4f7f-af63-5bab03393e54.root',        
+        '/store/mc/Phase2Spring24DIGIRECOMiniAOD/HiddenGluGluH_mH-125_Phi-30_ctau-10_bbbb_TuneCP5_14TeV-pythia8/GEN-SIM-DIGI-RAW-MINIAOD/PU200_Trk1GeV_140X_mcRun4_realistic_v4-v1/2810000/00681e06-2aae-43cd-9a07-c7e17bdd8c8f.root',
         # '/store/mc/Phase2Spring23DIGIRECOMiniAOD/MinBias_TuneCP5_14TeV-pythia8/GEN-SIM-DIGI-RAW-MINIAOD/PU200_Trk1GeV_131X_mcRun4_realistic_v5-v1/30002/3b44d52d-1807-4a4f-9b9b-19466303a741.root',
 ),
 
@@ -159,6 +160,6 @@ process.schedule = cms.Schedule([process.p,process.e])
 
 process.out.outputCommands += [ "drop *_l1tHGCalVFEProducer_*_*", ]
 
-if process.L1TPFJetsExtendedTask:
-    process.SimL1EmulatorTask.remove(process.l1tSC4NGJetProducer)
-    del process.l1tSC4NGJetProducer
+#if process.L1TPFJetsExtendedTask:
+#    process.SimL1EmulatorTask.remove(process.l1tSC4NGJetProducer)
+#    del process.l1tSC4NGJetProducer
