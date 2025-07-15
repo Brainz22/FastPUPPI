@@ -173,6 +173,15 @@ class JetNTuplizer : public edm::one::EDAnalyzer<edm::one::SharedResources,edm::
         edm::EDGetTokenT<edm::ValueMap<float>> const bjetids_;
         // const edm::InputTag pileupInfoTag_;
         TTree *tree_;
+        TH1F *h_jet_genmatchLLPdaughter_n;
+        TH1F *h_genLLP_daughter_eta;
+        TH1F *h_genLLP_daughter_phi;
+        TH1F *h_genLLP_daughter_pt;
+        TH1F *h_genLLP_eta;
+        TH1F *h_genLLP_phi;
+        TH1F *h_genLLP_pt;
+        TH1F *h_nGenLLP;
+        TH1F *h_nGenLLPDaughter;
         TH1F *h_GenJet_eta;
         TH1F *h_GenJet_eta_matched;
         uint32_t run_, lumi_; uint64_t event_;
@@ -240,6 +249,7 @@ class JetNTuplizer : public edm::one::EDAnalyzer<edm::one::SharedResources,edm::
     float jet_genmatch_lep_pt_;
     float jet_genmatch_lep_vis_pt_;
     float jet_genmatch_lep_dR_;
+    int   jet_genmatch_n = 0;
     // --------------------
     bool jet_reject_;
     float jet_eta_;
@@ -400,6 +410,7 @@ class JetNTuplizer : public edm::one::EDAnalyzer<edm::one::SharedResources,edm::
 
 
 
+
        
 };
 
@@ -417,6 +428,17 @@ JetNTuplizer::JetNTuplizer(const edm::ParameterSet& iConfig) :
 {
     usesResource("TFileService");
     edm::Service<TFileService> fs;
+    h_jet_genmatchLLPdaughter_n = fs->make<TH1F>("h_jet_genmatchLLPdaughter_n", "h_jet_genmatchLLPdaughter_n", 1, 0.5, 1.5);
+
+    h_genLLP_daughter_eta = fs->make<TH1F>("h_genLLP_daughter_eta", "h_genLLP_daughter_eta", 80, -5, 5);
+    h_genLLP_daughter_phi = fs->make<TH1F>("h_genLLP_daughter_phi", "h_genLLP_daughter_phi", 80, -3.5, 3.5);
+    h_genLLP_daughter_pt = fs->make<TH1F>("h_genLLP_daughter_pt", "h_genLLP_daughter_pt", 500, 0, 1000);
+    h_genLLP_eta = fs->make<TH1F>("h_genLLP_eta", "h_genLLP_eta", 80, -5, 5);
+    h_genLLP_phi = fs->make<TH1F>("h_genLLP_phi", "h_genLLP_phi", 80, -3.5, 3.5);
+    h_genLLP_pt = fs->make<TH1F>("h_genLLP_pt", "h_genLLP_pt", 500, 0, 1000);
+    h_nGenLLP = fs->make<TH1F>("h_nGenLLP", "h_nGenLLP", 1, 0.5, 1.5);
+    h_nGenLLPDaughter = fs->make<TH1F>("h_nGenLLPDaughter", "h_nGenLLPDaughter", 1, 0.5, 1.5);
+
     h_GenJet_eta = fs->make<TH1F>("h_GenJet_eta", "h_GenJet_eta", 80, -5, 5);
     h_GenJet_eta_matched = fs->make<TH1F>("h_GenJet_eta_matched", "h_GenJet_eta_matched", 80, -5, 5);
     tree_ = fs->make<TTree>("Jets","Jets");
@@ -581,8 +603,6 @@ JetNTuplizer::JetNTuplizer(const edm::ParameterSet& iConfig) :
     tree_->Branch("jet_pfcand_cluster_emet", &jet_pfcand_cluster_emet, njet_pfcand_);
     tree_->Branch("jet_pfcand_cluster_egvspion", &jet_pfcand_cluster_egvspion, njet_pfcand_);
     tree_->Branch("jet_pfcand_cluster_egvspu", &jet_pfcand_cluster_egvspu, njet_pfcand_);
-
-
     // -------------------------------------
     // settings for output TFile and TTree
     fs->file().SetCompressionAlgorithm(ROOT::ECompressionAlgorithm::kLZ4);
@@ -852,6 +872,8 @@ JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
             if(reco::deltaR(LLP_daughter_[igen].p4(),jetv_l1[i]->p4()) < minDR){
                 pos_matched = igen;
                 minDR = reco::deltaR(LLP_daughter_[igen].p4(),jetv_l1[i]->p4());
+                jet_genmatch_n++;
+                h_jet_genmatchLLPdaughter_n->Fill(1);
                 if (debug) {
                    std::cout<<"**************************************************************************"<<std::endl;
                    std::cout<<"Found Match Event: "<<event_<<"   DR: "<<minDR<<"    SizeDaughters: "<<LLP_daughter_.size()<<std::endl;
@@ -1381,7 +1403,6 @@ void JetNTuplizer::fill_genParticles(const edm::Event& iEvent)
     tau_gen_np0_.clear();
     tau_gen_nnh_.clear();
 
-
     if(!iEvent.isRealData())
     {
         edm::Handle<reco::GenParticleCollection> genParticles;
@@ -1445,25 +1466,29 @@ void JetNTuplizer::fill_genParticles(const edm::Event& iEvent)
 
         //LLP
         if (debug) std::cout<<"About to do LLP loop"<<std::endl;
-        int nLLP=0;
-        int ndaughter=0;
         for (const reco::Candidate &genC : *genParticles){
             //std::cout<<"ID: "<<genC.pdgId()<<"   Status:"<<genC.status()<<std::endl;
             const reco::GenParticle &gen = static_cast< const reco::GenParticle &>(genC);
             if(abs(gen.pdgId()) == 25  && abs(gen.status()) == 22){
                 LLP_.push_back(gen);
-                nLLP++;
+                h_genLLP_eta->Fill(gen.eta());
+                h_genLLP_phi->Fill(gen.phi());
+                h_genLLP_pt->Fill(gen.pt());
+                h_nGenLLP->Fill(1);
                 for(unsigned i = 0; i<gen.numberOfDaughters(); i++){
                     const reco::GenParticle &daughter_ = static_cast< const reco::GenParticle &>(*(gen.daughter(i)));
                     if( abs(daughter_.status()) == 23){
                        LLP_daughter_.push_back(daughter_);
-                       ndaughter++;
+                       h_genLLP_daughter_eta->Fill(daughter_.eta());
+                       h_genLLP_daughter_phi->Fill(daughter_.phi());
+                       h_genLLP_daughter_pt->Fill(daughter_.pt());
+                       h_nGenLLPDaughter->Fill(1);
                     }
                 }
             }
         }
         if (debug) {
-           std::cout<<event_<<"  Number of LLPs: "<<nLLP<<"   Number of daughters: "<<ndaughter<<"   DaughterSize: "<<LLP_daughter_.size()<<std::endl;
+           std::cout<<event_<<"  Number of LLPs: "<<LLP_.size()<<"   Number of daughters: "<<LLP_daughter_.size()<<std::endl;
            std::cout<<"---- Print daughter info ----"<<std::endl;
            for(unsigned i = 0; i<LLP_daughter_.size(); i++){
              std::cout<<i<<" pt: "<<LLP_daughter_[i].pt()<<"   eta: "<<LLP_daughter_[i].eta()<<"   phi:  "<<LLP_daughter_[i].phi()<<std::endl;
