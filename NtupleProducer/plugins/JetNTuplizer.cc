@@ -74,7 +74,7 @@
 #include "DataFormats/L1TParticleFlow/interface/datatypes.h"
 #include "L1Trigger/Phase2L1ParticleFlow/interface/jetmet/L1SeedConePFJetEmulator.h"
 
-const bool debug = false;
+const bool debug = true;
 
 // some tools to fix inputs or calculate them
 namespace jettools{
@@ -173,6 +173,7 @@ class JetNTuplizer : public edm::one::EDAnalyzer<edm::one::SharedResources,edm::
         edm::EDGetTokenT<edm::ValueMap<float>> const bjetids_;
         // const edm::InputTag pileupInfoTag_;
         TTree *tree_;
+        TH1F *h_genPtRes;
         TH1F *h_jet_genmatchLLPdaughter_n;
         TH1F *h_genLLP_daughter_eta;
         TH1F *h_genLLP_daughter_phi;
@@ -187,7 +188,7 @@ class JetNTuplizer : public edm::one::EDAnalyzer<edm::one::SharedResources,edm::
         uint32_t run_, lumi_; uint64_t event_;
          //   float bZ_;
 
-        // float dRJetGenMatch_ = 0.2;
+        float dRPFcandGenMatch_ = 0.4;
         float dRJetGenMatch_ = 0.4;
         bool  isMC_;
         float jetPtMin_ = 5.;
@@ -213,7 +214,9 @@ class JetNTuplizer : public edm::one::EDAnalyzer<edm::one::SharedResources,edm::
     std::vector<reco::GenParticle> Bhadron_;
     std::vector<reco::GenParticle> Bhadron_daughter_;
     std::vector<reco::GenParticle> LLP_;
+    std::vector<float> LLP_ctau_;
     std::vector<reco::GenParticle> LLP_daughter_;
+    std::vector<int> LLP_daughter_parentIndex_;
 
     // --------------------
     // from PNET
@@ -304,18 +307,8 @@ class JetNTuplizer : public edm::one::EDAnalyzer<edm::one::SharedResources,edm::
 
 
     // --------------------
-    float jet_genmatch_llp_pt_;
-    float jet_genmatch_llp_eta_;
-    float jet_genmatch_llp_phi_;
-   // float jet_genmatch_llp2_pt_;
-   // float jet_genmatch_llp2_eta_;
-   // float jet_genmatch_llp2_phi_;
-   // float jet_genmatch_llp3_pt_;
-   // float jet_genmatch_llp3_eta_;
-   // float jet_genmatch_llp3_phi_;
-   // float jet_genmatch_llp4_pt_;
-   // float jet_genmatch_llp4_eta_;
-   // float jet_genmatch_llp4_phi_;
+    bool jet_doesmatch_genLLPDecay_;
+    float jet_genmatch_llp_gllp_ctau_;
 
     float jet_genmatch_pt_;
     float jet_genmatch_eta_;
@@ -328,6 +321,11 @@ class JetNTuplizer : public edm::one::EDAnalyzer<edm::one::SharedResources,edm::
 
     // jet pf candidates
     unsigned int njet_pfcand_;
+    //llp matching
+    std::vector<float> jet_pfcand_genmatch_llp_pt;
+    std::vector<float> jet_pfcand_genmatch_llp_eta;
+    std::vector<float> jet_pfcand_genmatch_llp_phi;
+
     std::vector<float> jet_pfcand_pt;
     std::vector<float> jet_pfcand_pt_phys;
     std::vector<float> jet_pfcand_pt_rel;
@@ -428,6 +426,7 @@ JetNTuplizer::JetNTuplizer(const edm::ParameterSet& iConfig) :
 {
     usesResource("TFileService");
     edm::Service<TFileService> fs;
+    h_genPtRes = fs->make<TH1F>("h_genPtRes", "h_genPtRes", 100, -1.5, 1.5);
     h_jet_genmatchLLPdaughter_n = fs->make<TH1F>("h_jet_genmatchLLPdaughter_n", "h_jet_genmatchLLPdaughter_n", 1, 0.5, 1.5);
 
     h_genLLP_daughter_eta = fs->make<TH1F>("h_genLLP_daughter_eta", "h_genLLP_daughter_eta", 80, -5, 5);
@@ -496,18 +495,8 @@ JetNTuplizer::JetNTuplizer(const edm::ParameterSet& iConfig) :
     tree_->Branch("jet_genmatch_lep_vis_pt", &jet_genmatch_lep_vis_pt_);
     tree_->Branch("jet_genmatch_lep_dR", &jet_genmatch_lep_dR_);
 
-    tree_->Branch("jet_genmatch_llp_pt",  &jet_genmatch_llp_pt_);
-    tree_->Branch("jet_genmatch_llp_eta", &jet_genmatch_llp_eta_);
-    tree_->Branch("jet_genmatch_llp_phi", &jet_genmatch_llp_phi_);
-    //tree_->Branch("jet_genmatch_llp2_pt",  &jet_genmatch_llp2_pt_);
-    //tree_->Branch("jet_genmatch_llp2_eta", &jet_genmatch_llp2_eta_);
-    //tree_->Branch("jet_genmatch_llp2_phi", &jet_genmatch_llp2_phi_);
-    //tree_->Branch("jet_genmatch_llp3_pt",  &jet_genmatch_llp3_pt_);
-    //tree_->Branch("jet_genmatch_llp3_eta", &jet_genmatch_llp3_eta_);
-    //tree_->Branch("jet_genmatch_llp3_phi", &jet_genmatch_llp3_phi_);
-    //tree_->Branch("jet_genmatch_llp4_pt",  &jet_genmatch_llp4_pt_);
-    //tree_->Branch("jet_genmatch_llp4_eta", &jet_genmatch_llp4_eta_);
-    //tree_->Branch("jet_genmatch_llp4_phi", &jet_genmatch_llp4_phi_);
+    tree_->Branch("jet_doesmatch_genLLPDecay", &jet_doesmatch_genLLPDecay_);
+    tree_->Branch("jet_genmatch_llp_gllp_ctau",  &jet_genmatch_llp_gllp_ctau_);
 
     tree_->Branch("jet_genmatch_pt", &jet_genmatch_pt_);
     tree_->Branch("jet_genmatch_eta", &jet_genmatch_eta_);
@@ -524,6 +513,11 @@ JetNTuplizer::JetNTuplizer(const edm::ParameterSet& iConfig) :
     tree_->Branch("jet_pt_corr", &jet_pt_corr_);
 
     tree_->Branch("jet_npfcand", &njet_pfcand_);
+    // llp matching
+    tree_->Branch("jet_pfcand_genmatch_llp_pt", &jet_pfcand_genmatch_llp_pt, njet_pfcand_);
+    tree_->Branch("jet_pfcand_genmatch_llp_eta", &jet_pfcand_genmatch_llp_eta, njet_pfcand_);
+    tree_->Branch("jet_pfcand_genmatch_llp_phi", &jet_pfcand_genmatch_llp_phi, njet_pfcand_);
+
     tree_->Branch("jet_pfcand_isfilled", &jet_pfcand_isfilled, njet_pfcand_);
     tree_->Branch("jet_pfcand_pt", &jet_pfcand_pt, njet_pfcand_);
     tree_->Branch("jet_pfcand_pt_phys", &jet_pfcand_pt_phys, njet_pfcand_);
@@ -768,6 +762,7 @@ JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
     sort(muonv_l1.begin(), muonv_l1.end(), muonRefSorter);
     
     std::vector<bool> matched(jetv_gen.size(), false);        
+    std::vector<bool> matched_LLP(jetv_gen.size(), false);        
     // loop over reco jets
     for (size_t i = 0; i < jetv_l1.size(); i++) {
         l1ct::Jet ctJet = l1ct::Jet::unpack(jetv_l1[i]->getHWJetCT());
@@ -844,7 +839,12 @@ JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
         }
         
         if(pos_matched >= 0){
-            h_GenJet_eta_matched->Fill(jetv_gen[pos_matched]->eta());
+            if(jetv_gen[pos_matched]->pt() > 0) h_genPtRes->Fill((jetv_l1[i]->pt() - jetv_gen[pos_matched]->pt())/jetv_gen[pos_matched]->pt());
+            if(debug){
+                std::cout<<"Jet matched to GenJet pT res: "<<fabs(jetv_l1[i]->pt() - jetv_gen[pos_matched]->pt())/jetv_gen[pos_matched]->pt()
+                <<"  ptL1:"<<jetv_l1[i]->pt()<<"    ptGen:"<<jetv_gen[pos_matched]->pt()
+                <<std::endl;
+            }
             jet_genmatch_pt_ = jetv_gen[pos_matched]->pt();
             jet_genmatch_eta_ = jetv_gen[pos_matched]->eta();
             jet_genmatch_phi_ = jetv_gen[pos_matched]->phi();
@@ -868,32 +868,34 @@ JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
         pos_matched = -1;
         minDR = dRJetGenMatch_;
         for(size_t igen = 0; igen < LLP_daughter_.size(); igen++){
+            if(matched_LLP[igen]) continue;
+            //if(!(jetv_gen[igen]->pt()>20.)) continue;
             //if(jetv_l1[i]->pt() <= 0.1 * LLP_daughter_[igen].pt()) continue;
             if(reco::deltaR(LLP_daughter_[igen].p4(),jetv_l1[i]->p4()) < minDR){
                 pos_matched = igen;
                 minDR = reco::deltaR(LLP_daughter_[igen].p4(),jetv_l1[i]->p4());
-                jet_genmatch_n++;
-                h_jet_genmatchLLPdaughter_n->Fill(1);
                 if (debug) {
                    std::cout<<"**************************************************************************"<<std::endl;
-                   std::cout<<"Found Match Event: "<<event_<<"   DR: "<<minDR<<"    SizeDaughters: "<<LLP_daughter_.size()<<std::endl;
+                   std::cout<<"Found LLP Match Event: "<<event_<<"   DR: "<<minDR<<"    SizeDaughters: "<<LLP_daughter_.size()<<std::endl;
                    std::cout<<"pt1: "<<jetv_l1[i]->pt()  <<"    ptd: " <<LLP_daughter_[igen].pt()<<std::endl;
                    std::cout<<"eta1: "<<jetv_l1[i]->eta()<<"    etad: "<<LLP_daughter_[igen].eta()<<std::endl;
                    std::cout<<"phi1: "<<jetv_l1[i]->phi()<<"    phid: "<<LLP_daughter_[igen].phi()<<std::endl;
+                   std::cout<<"ctau: "<<LLP_ctau_.at(LLP_daughter_parentIndex_.at(igen))<<std::endl;
                    std::cout<<"**************************************************************************"<<std::endl;
                 }
             }
         }
 
-        if(pos_matched == 0){
-           jet_genmatch_llp_pt_  = jetv_gen[pos_matched]->pt();
-           jet_genmatch_llp_eta_ = jetv_gen[pos_matched]->eta();
-           jet_genmatch_llp_phi_ = jetv_gen[pos_matched]->phi();
+        if(pos_matched >= 0){
+           matched_LLP[pos_matched] = true;
+           jet_genmatch_n++;
+           h_jet_genmatchLLPdaughter_n->Fill(1);
+           jet_doesmatch_genLLPDecay_= true;
+           jet_genmatch_llp_gllp_ctau_ = LLP_ctau_.at(LLP_daughter_parentIndex_.at(pos_matched));
         }
         else{
-           jet_genmatch_llp_pt_  = 0;
-           jet_genmatch_llp_eta_ = 0;
-           jet_genmatch_llp_phi_ = 0;
+           jet_doesmatch_genLLPDecay_= false;
+           jet_genmatch_llp_gllp_ctau_ = -999;
         }
 
         // matching with gen-leptons (muons/electrons/hadronic taus)
@@ -1086,7 +1088,10 @@ JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 
         // from PNET ntupler
         std::sort(vectorOfConstituents.begin(),vectorOfConstituents.end(),l1PFCandidateSorter);
-    
+
+        jet_pfcand_genmatch_llp_pt.clear();
+        jet_pfcand_genmatch_llp_eta.clear();
+        jet_pfcand_genmatch_llp_phi.clear();
 
         jet_pfcand_pt.clear();
         jet_pfcand_pt_phys.clear();
@@ -1168,12 +1173,46 @@ JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
         jet_pfcand_cluster_egvspu.clear();
 
         njet_pfcand_ = 0;
+        std::vector<bool> matched_LLP_pfcand(vectorOfConstituents.size(), false); 
         for(size_t ipfcand = 0; ipfcand < vectorOfConstituents.size(); ipfcand++){
         
             l1t::PFCandidate pfcand = vectorOfConstituents.at(ipfcand);
             if(pfcand.pt() < jetPFCandidatePtMin_) continue;
             njet_pfcand_++;
 
+            // match to LLP
+            pos_matched = -1;
+            minDR = dRPFcandGenMatch_;
+            for(size_t igen = 0; igen < LLP_daughter_.size(); igen++){
+                if(matched_LLP_pfcand[igen]) continue;
+                //if(pfcand.pt()  <= 0.1 * LLP_daughter_[igen].pt()) continue;
+                if(reco::deltaR(LLP_daughter_[igen].p4(),pfcand.p4()) < minDR){
+                    pos_matched = igen;
+                    matched_LLP_pfcand[igen] = true;
+                    minDR = reco::deltaR(LLP_daughter_[igen].p4(),pfcand.p4());
+                    if (debug) {
+                       std::cout<<"**************************************************************************"<<std::endl;
+                       std::cout<<"Found LLP-pfcand Match Event: "<<event_<<"   DR: "<<minDR<<"    SizeDaughters: "<<LLP_daughter_.size()<<std::endl;
+                       std::cout<<"pt1: "<<pfcand.pt()  <<"    ptd: " <<LLP_daughter_[igen].pt()<<std::endl;
+                       std::cout<<"eta1: "<<pfcand.eta()<<"    etad: "<<LLP_daughter_[igen].eta()<<std::endl;
+                       std::cout<<"phi1: "<<pfcand.phi()<<"    phid: "<<LLP_daughter_[igen].phi()<<std::endl;
+                       std::cout<<"**************************************************************************"<<std::endl;
+                    }
+                }
+            }
+
+            if(pos_matched >= 0){
+               //jet_genmatch_n++;
+               //h_jet_genmatchLLPdaughter_n->Fill(1);
+               jet_pfcand_genmatch_llp_pt.push_back(pfcand.pt());
+               jet_pfcand_genmatch_llp_eta.push_back(pfcand.eta());
+               jet_pfcand_genmatch_llp_phi.push_back(pfcand.phi());
+            }
+            else{
+               jet_pfcand_genmatch_llp_pt.push_back(-999);
+               jet_pfcand_genmatch_llp_eta.push_back(-999);
+               jet_pfcand_genmatch_llp_phi.push_back(-999);
+            }
             // jet_pfcand_pt.push_back(pfcand.pt());
             jet_pfcand_pt.push_back(float(pfcand.hwPt()));
             jet_pfcand_pt_phys.push_back(pfcand.pt());
@@ -1375,6 +1414,7 @@ void JetNTuplizer::fill_genParticles(const edm::Event& iEvent)
     Bhadron_.clear();
     Bhadron_daughter_.clear();
     LLP_.clear();
+    LLP_ctau_.clear();
     LLP_daughter_.clear();
 
     // Generator-level information (GEN particles)
@@ -1467,10 +1507,17 @@ void JetNTuplizer::fill_genParticles(const edm::Event& iEvent)
         //LLP
         if (debug) std::cout<<"About to do LLP loop"<<std::endl;
         for (const reco::Candidate &genC : *genParticles){
+            bool foundDaughter = false;
             //std::cout<<"ID: "<<genC.pdgId()<<"   Status:"<<genC.status()<<std::endl;
             const reco::GenParticle &gen = static_cast< const reco::GenParticle &>(genC);
+            float decay_vertex = -999;
+            float decay_length = -999;
+            float beta = sqrt(gen.px()*gen.px() + gen.py()*gen.py() + gen.pz()*gen.pz()) / gen.energy();
+            float gamma = 1.0 / sqrt(1.0 - beta*beta);
+
             if(abs(gen.pdgId()) == 25  && abs(gen.status()) == 22){
                 LLP_.push_back(gen);
+                int parentIndex = LLP_.size() - 1;
                 h_genLLP_eta->Fill(gen.eta());
                 h_genLLP_phi->Fill(gen.phi());
                 h_genLLP_pt->Fill(gen.pt());
@@ -1479,12 +1526,18 @@ void JetNTuplizer::fill_genParticles(const edm::Event& iEvent)
                     const reco::GenParticle &daughter_ = static_cast< const reco::GenParticle &>(*(gen.daughter(i)));
                     if( abs(daughter_.status()) == 23){
                        LLP_daughter_.push_back(daughter_);
+                       LLP_daughter_parentIndex_.push_back(parentIndex);
                        h_genLLP_daughter_eta->Fill(daughter_.eta());
                        h_genLLP_daughter_phi->Fill(daughter_.phi());
                        h_genLLP_daughter_pt->Fill(daughter_.pt());
                        h_nGenLLPDaughter->Fill(1);
+                       foundDaughter = true;
+                       decay_vertex = sqrt( daughter_.vx()*daughter_.vx() + daughter_.vy()*daughter_.vy() + daughter_.vz()*daughter_.vz() );
                     }
                 }
+                if(foundDaughter) decay_length = decay_vertex / (beta * gamma);
+                LLP_ctau_.push_back(decay_length);
+                if(debug) std::cout<<"Found LLP Event: "<<event_<<"   ctau: "<<decay_length<<"   beta: "<<beta<<"   gamma: "<<gamma<<"   decay_vertex: "<<decay_vertex<<std::endl;
             }
         }
         if (debug) {
