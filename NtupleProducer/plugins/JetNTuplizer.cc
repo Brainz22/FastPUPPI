@@ -74,7 +74,7 @@
 #include "DataFormats/L1TParticleFlow/interface/datatypes.h"
 #include "L1Trigger/Phase2L1ParticleFlow/interface/jetmet/L1SeedConePFJetEmulator.h"
 
-const bool debug = true;
+const bool debug = false;
 
 // some tools to fix inputs or calculate them
 namespace jettools{
@@ -322,9 +322,8 @@ class JetNTuplizer : public edm::one::EDAnalyzer<edm::one::SharedResources,edm::
     // jet pf candidates
     unsigned int njet_pfcand_;
     //llp matching
-    std::vector<float> jet_pfcand_genmatch_llp_pt;
-    std::vector<float> jet_pfcand_genmatch_llp_eta;
-    std::vector<float> jet_pfcand_genmatch_llp_phi;
+    std::vector<int> jet_pfcand_genmatch_llp;
+    std::vector<float> jet_pfcand_genmatch_llp_gen_ctau;
 
     std::vector<float> jet_pfcand_pt;
     std::vector<float> jet_pfcand_pt_phys;
@@ -514,9 +513,8 @@ JetNTuplizer::JetNTuplizer(const edm::ParameterSet& iConfig) :
 
     tree_->Branch("jet_npfcand", &njet_pfcand_);
     // llp matching
-    tree_->Branch("jet_pfcand_genmatch_llp_pt", &jet_pfcand_genmatch_llp_pt, njet_pfcand_);
-    tree_->Branch("jet_pfcand_genmatch_llp_eta", &jet_pfcand_genmatch_llp_eta, njet_pfcand_);
-    tree_->Branch("jet_pfcand_genmatch_llp_phi", &jet_pfcand_genmatch_llp_phi, njet_pfcand_);
+    tree_->Branch("jet_pfcand_genmatch_llp", &jet_pfcand_genmatch_llp, njet_pfcand_);
+    tree_->Branch("jet_pfcand_genmatch_llp_gen_ctau", &jet_pfcand_genmatch_llp_gen_ctau, njet_pfcand_);
 
     tree_->Branch("jet_pfcand_isfilled", &jet_pfcand_isfilled, njet_pfcand_);
     tree_->Branch("jet_pfcand_pt", &jet_pfcand_pt, njet_pfcand_);
@@ -627,11 +625,11 @@ JetNTuplizer::beginJob()
 void
 JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 {
-    if(debug) std::cout<<"@@@@@@@@@@@@@@@@@@@@@@@@   NEW EVENT @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"<<std::endl;
 
     run_  = iEvent.id().run();
     lumi_ = iEvent.id().luminosityBlock();
     event_ = iEvent.id().event();
+    if(debug) std::cout<<"@@@@@@@@@@@@@@@@@@@@@@@@   NEW EVENT: "<<event_<<" @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"<<std::endl;
 
     edm::Handle<std::vector<reco::GenJet>> genjets;
     edm::Handle<std::vector<reco::GenParticle>> genparticles;
@@ -762,7 +760,6 @@ JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
     sort(muonv_l1.begin(), muonv_l1.end(), muonRefSorter);
     
     std::vector<bool> matched(jetv_gen.size(), false);        
-    std::vector<bool> matched_LLP(jetv_gen.size(), false);        
     // loop over reco jets
     for (size_t i = 0; i < jetv_l1.size(); i++) {
         l1ct::Jet ctJet = l1ct::Jet::unpack(jetv_l1[i]->getHWJetCT());
@@ -776,6 +773,8 @@ JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
         float score_muon = -999;
         float score_electron = -999;
         float score_regression = 1;
+        jet_doesmatch_genLLPDecay_ = false;
+        jet_genmatch_llp_gllp_ctau_ = -999;
         if (tagScores.size() > 0){
             score_b = tagScores[0];
             score_charm = tagScores[1];
@@ -864,40 +863,6 @@ JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
         }
         
         if (debug) std::cout<<"Jet_"<<i<<" pt: "<<jetv_l1[i]->pt()<<"   eta: "<<jetv_l1[i]->eta()<<"   phi:  "<<jetv_l1[i]->phi()<<std::endl;
-        // match to LLP
-        pos_matched = -1;
-        minDR = dRJetGenMatch_;
-        for(size_t igen = 0; igen < LLP_daughter_.size(); igen++){
-            if(matched_LLP[igen]) continue;
-            //if(!(jetv_gen[igen]->pt()>20.)) continue;
-            //if(jetv_l1[i]->pt() <= 0.1 * LLP_daughter_[igen].pt()) continue;
-            if(reco::deltaR(LLP_daughter_[igen].p4(),jetv_l1[i]->p4()) < minDR){
-                pos_matched = igen;
-                minDR = reco::deltaR(LLP_daughter_[igen].p4(),jetv_l1[i]->p4());
-                if (debug) {
-                   std::cout<<"**************************************************************************"<<std::endl;
-                   std::cout<<"Found LLP Match Event: "<<event_<<"   DR: "<<minDR<<"    SizeDaughters: "<<LLP_daughter_.size()<<std::endl;
-                   std::cout<<"pt1: "<<jetv_l1[i]->pt()  <<"    ptd: " <<LLP_daughter_[igen].pt()<<std::endl;
-                   std::cout<<"eta1: "<<jetv_l1[i]->eta()<<"    etad: "<<LLP_daughter_[igen].eta()<<std::endl;
-                   std::cout<<"phi1: "<<jetv_l1[i]->phi()<<"    phid: "<<LLP_daughter_[igen].phi()<<std::endl;
-                   std::cout<<"ctau: "<<LLP_ctau_.at(LLP_daughter_parentIndex_.at(igen))<<std::endl;
-                   std::cout<<"**************************************************************************"<<std::endl;
-                }
-            }
-        }
-
-        if(pos_matched >= 0){
-           matched_LLP[pos_matched] = true;
-           jet_genmatch_n++;
-           h_jet_genmatchLLPdaughter_n->Fill(1);
-           jet_doesmatch_genLLPDecay_= true;
-           jet_genmatch_llp_gllp_ctau_ = LLP_ctau_.at(LLP_daughter_parentIndex_.at(pos_matched));
-        }
-        else{
-           jet_doesmatch_genLLPDecay_= false;
-           jet_genmatch_llp_gllp_ctau_ = -999;
-        }
-
         // matching with gen-leptons (muons/electrons/hadronic taus)
         minDR = 1000;
         int nlep_in_cone  = 0;
@@ -1089,9 +1054,8 @@ JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
         // from PNET ntupler
         std::sort(vectorOfConstituents.begin(),vectorOfConstituents.end(),l1PFCandidateSorter);
 
-        jet_pfcand_genmatch_llp_pt.clear();
-        jet_pfcand_genmatch_llp_eta.clear();
-        jet_pfcand_genmatch_llp_phi.clear();
+        jet_pfcand_genmatch_llp_gen_ctau.clear();
+        jet_pfcand_genmatch_llp.clear();
 
         jet_pfcand_pt.clear();
         jet_pfcand_pt_phys.clear();
@@ -1173,45 +1137,102 @@ JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
         jet_pfcand_cluster_egvspu.clear();
 
         njet_pfcand_ = 0;
-        std::vector<bool> matched_LLP_pfcand(vectorOfConstituents.size(), false); 
+        std::vector<size_t> selectedPfcands;
+        selectedPfcands.reserve(vectorOfConstituents.size());
         for(size_t ipfcand = 0; ipfcand < vectorOfConstituents.size(); ipfcand++){
-        
-            l1t::PFCandidate pfcand = vectorOfConstituents.at(ipfcand);
+            const l1t::PFCandidate &pfcand = vectorOfConstituents.at(ipfcand);
             if(pfcand.pt() < jetPFCandidatePtMin_) continue;
+            selectedPfcands.push_back(ipfcand);
+        }
+
+        struct MatchPair {
+            float dR;
+            size_t pIndex;  // index in selectedPfcands
+            size_t dIndex;  // index in LLP_daughter_
+        };
+
+        std::vector<MatchPair> matchPairs;
+        matchPairs.reserve(selectedPfcands.size() * LLP_daughter_.size());
+        for (size_t pIndex = 0; pIndex < selectedPfcands.size(); pIndex++) {
+            const l1t::PFCandidate &pfcand = vectorOfConstituents.at(selectedPfcands[pIndex]);
+            for (size_t dIndex = 0; dIndex < LLP_daughter_.size(); dIndex++) {
+                const float dR = reco::deltaR(LLP_daughter_[dIndex].p4(), pfcand.p4());
+                // if (pfcand.pt() <= 0.1f * LLP_daughter_[dIndex].pt()) continue;
+                if (dR < dRPFcandGenMatch_) matchPairs.push_back({dR, pIndex, dIndex});
+            }
+        }
+        std::sort(matchPairs.begin(), matchPairs.end(), [](const MatchPair &a, const MatchPair &b) { return a.dR < b.dR; });
+
+        std::vector<int> matchedDaughterForPfcand(selectedPfcands.size(), -1);
+        std::vector<float> matchedDRForPfcand(selectedPfcands.size(), -1.f);
+        std::vector<bool> usedPfcand(selectedPfcands.size(), false);
+        std::vector<bool> usedDaughter(LLP_daughter_.size(), false);
+
+        for (const auto &pair : matchPairs) {
+            if (usedPfcand[pair.pIndex]) continue;
+            if (usedDaughter[pair.dIndex]) continue;
+            usedPfcand[pair.pIndex] = true;
+            usedDaughter[pair.dIndex] = true;
+            matchedDaughterForPfcand[pair.pIndex] = static_cast<int>(pair.dIndex);
+            matchedDRForPfcand[pair.pIndex] = pair.dR;
+        }
+
+        if (debug) {
+            size_t nMatched = 0;
+            for (size_t pIndex = 0; pIndex < selectedPfcands.size(); pIndex++) {
+                if (matchedDaughterForPfcand[pIndex] >= 0) nMatched++;
+            }
+            std::cout << "==== LLP-pfcand matching summary (event " << event_ << ", jet " << i << ") ====" << std::endl;
+            std::cout << "pfcands(selected): " << selectedPfcands.size()
+                      << "  LLP_daughters: " << LLP_daughter_.size()
+                      << "  candidate pairs: " << matchPairs.size()
+                      << "  matches: " << nMatched << std::endl;
+            for (size_t pIndex = 0; pIndex < selectedPfcands.size(); pIndex++) {
+                const auto &pfcand = vectorOfConstituents.at(selectedPfcands[pIndex]);
+                const int dIndex = matchedDaughterForPfcand[pIndex];
+                if (dIndex < 0) {
+                    std::cout << "unmatched pfcand: pt/eta/phi = " << pfcand.pt() << " / " << pfcand.eta() << " / "
+                              << pfcand.phi() << std::endl;
+                    continue;
+                }
+                const auto &daughter = LLP_daughter_.at(dIndex);
+                const int llpIndex = LLP_daughter_parentIndex_.at(dIndex);
+                const float llpGenCtau =
+                    (llpIndex >= 0 && llpIndex < static_cast<int>(LLP_ctau_.size())) ? LLP_ctau_.at(llpIndex) : -999.f;
+                std::cout << "match: dR = " << matchedDRForPfcand[pIndex]
+                          << " | pfcand pt/eta/phi = " << pfcand.pt() << " / " << pfcand.eta() << " / " << pfcand.phi()
+                          << " | gen(daughter) pt/eta/phi = " << daughter.pt() << " / " << daughter.eta() << " / "
+                          << daughter.phi() << " | parent ctau = " << llpGenCtau << std::endl;
+            }
+            std::cout << "============================================================" << std::endl;
+        }
+
+        for(size_t pIndex = 0; pIndex < selectedPfcands.size(); pIndex++){
+            l1t::PFCandidate pfcand = vectorOfConstituents.at(selectedPfcands[pIndex]);
             njet_pfcand_++;
 
-            // match to LLP
-            pos_matched = -1;
-            minDR = dRPFcandGenMatch_;
-            for(size_t igen = 0; igen < LLP_daughter_.size(); igen++){
-                if(matched_LLP_pfcand[igen]) continue;
-                //if(pfcand.pt()  <= 0.1 * LLP_daughter_[igen].pt()) continue;
-                if(reco::deltaR(LLP_daughter_[igen].p4(),pfcand.p4()) < minDR){
-                    pos_matched = igen;
-                    matched_LLP_pfcand[igen] = true;
-                    minDR = reco::deltaR(LLP_daughter_[igen].p4(),pfcand.p4());
-                    if (debug) {
-                       std::cout<<"**************************************************************************"<<std::endl;
-                       std::cout<<"Found LLP-pfcand Match Event: "<<event_<<"   DR: "<<minDR<<"    SizeDaughters: "<<LLP_daughter_.size()<<std::endl;
-                       std::cout<<"pt1: "<<pfcand.pt()  <<"    ptd: " <<LLP_daughter_[igen].pt()<<std::endl;
-                       std::cout<<"eta1: "<<pfcand.eta()<<"    etad: "<<LLP_daughter_[igen].eta()<<std::endl;
-                       std::cout<<"phi1: "<<pfcand.phi()<<"    phid: "<<LLP_daughter_[igen].phi()<<std::endl;
-                       std::cout<<"**************************************************************************"<<std::endl;
-                    }
-                }
+            pos_matched = matchedDaughterForPfcand[pIndex];
+            minDR = (pos_matched >= 0) ? matchedDRForPfcand[pIndex] : dRPFcandGenMatch_;
+
+            if (debug && pos_matched >= 0) {
+               std::cout<<"**************************************************************************"<<std::endl;
+               std::cout<<"Found LLP-pfcand Match Event: "<<event_<<"   DR: "<<minDR<<"    SizeDaughters: "<<LLP_daughter_.size()<<std::endl;
+               std::cout<<"pt1: "<<pfcand.pt()  <<"    ptd: " <<LLP_daughter_[pos_matched].pt()<<std::endl;
+               std::cout<<"eta1: "<<pfcand.eta()<<"    etad: "<<LLP_daughter_[pos_matched].eta()<<std::endl;
+               std::cout<<"phi1: "<<pfcand.phi()<<"    phid: "<<LLP_daughter_[pos_matched].phi()<<std::endl;
+               std::cout<<"**************************************************************************"<<std::endl;
             }
 
             if(pos_matched >= 0){
-               //jet_genmatch_n++;
-               //h_jet_genmatchLLPdaughter_n->Fill(1);
-               jet_pfcand_genmatch_llp_pt.push_back(pfcand.pt());
-               jet_pfcand_genmatch_llp_eta.push_back(pfcand.eta());
-               jet_pfcand_genmatch_llp_phi.push_back(pfcand.phi());
+               jet_pfcand_genmatch_llp.push_back(1);
+               const int llpIndex = LLP_daughter_parentIndex_.at(pos_matched);
+               const float llpGenCtau =
+                   (llpIndex >= 0 && llpIndex < static_cast<int>(LLP_ctau_.size())) ? LLP_ctau_.at(llpIndex) : -999.f;
+               jet_pfcand_genmatch_llp_gen_ctau.push_back(llpGenCtau);
             }
             else{
-               jet_pfcand_genmatch_llp_pt.push_back(-999);
-               jet_pfcand_genmatch_llp_eta.push_back(-999);
-               jet_pfcand_genmatch_llp_phi.push_back(-999);
+               jet_pfcand_genmatch_llp.push_back(0);
+               jet_pfcand_genmatch_llp_gen_ctau.push_back(-999);
             }
             // jet_pfcand_pt.push_back(pfcand.pt());
             jet_pfcand_pt.push_back(float(pfcand.hwPt()));
@@ -1391,6 +1412,31 @@ JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
             }
         }
 
+        // derive jet-level LLP match from constituent matches: any matched pfcand -> jet matches
+        int chosenDaughter = -1;
+        for (size_t pIndex = 0; pIndex < selectedPfcands.size(); pIndex++) {
+            const int dIdx = matchedDaughterForPfcand[pIndex];
+            if (dIdx < 0) continue;
+            if (chosenDaughter < 0) chosenDaughter = dIdx;  // take the first matched daughter
+        }
+
+        if (chosenDaughter >= 0) {
+            jet_doesmatch_genLLPDecay_ = true;
+            const int llpIndex = LLP_daughter_parentIndex_.at(chosenDaughter);
+            jet_genmatch_llp_gllp_ctau_ =
+                (llpIndex >= 0 && llpIndex < static_cast<int>(LLP_ctau_.size())) ? LLP_ctau_.at(llpIndex) : -999.f;
+            if (debug) {
+                const auto &bestDaughter = LLP_daughter_.at(chosenDaughter);
+                std::cout << "[jet-level LLP via pfcands] event " << event_ << " jet " << i
+                          << " matched daughter pt/eta/phi: " << bestDaughter.pt() << " / " << bestDaughter.eta()
+                          << " / " << bestDaughter.phi() << " | parent ctau: " << jet_genmatch_llp_gllp_ctau_ 
+                          << std::endl;
+            }
+        } else {
+            jet_doesmatch_genLLPDecay_ = false;
+            jet_genmatch_llp_gllp_ctau_ = -999;
+        }
+
         tree_->Fill();
         //h_GenJet_eta->Write();
     }
@@ -1416,6 +1462,7 @@ void JetNTuplizer::fill_genParticles(const edm::Event& iEvent)
     LLP_.clear();
     LLP_ctau_.clear();
     LLP_daughter_.clear();
+    LLP_daughter_parentIndex_.clear();
 
     // Generator-level information (GEN particles)
     gen_particle_pt.clear();
