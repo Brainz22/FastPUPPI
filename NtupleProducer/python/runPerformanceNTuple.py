@@ -1,6 +1,7 @@
 import FWCore.ParameterSet.Config as cms
 from Configuration.StandardSequences.Eras import eras
 from PhysicsTools.NanoAOD.common_cff import Var, ExtVar
+import os
 
 def LazyVar(expr, valtype, doc=None, precision=-1):
     return Var(expr, valtype, doc, precision, lazyEval=True)
@@ -16,7 +17,8 @@ process.maxEvents = cms.untracked.PSet( input = cms.untracked.int32(-1))
 process.MessageLogger.cerr.FwkReport.reportEvery = 1
 
 process.source = cms.Source("PoolSource",
-    fileNames = cms.untracked.vstring('file:inputs125X.root'),
+    #fileNames = cms.untracked.vstring('file:inputs125X.root'),
+    fileNames = cms.untracked.vstring('root://cmsxrootd.fnal.gov///store/cmst3/group/l1tr/FastPUPPI/15_1_X/fpinputs_140X/v1/MinBias_TuneCP5_14TeV-pythia8/NuGunAllEta_PU200_151Xv0/250910_165617/0000/inputs151X_11.root'),
     inputCommands = cms.untracked.vstring("keep *", 
             "drop l1tPFClusters_*_*_*",
             "drop l1tPFTracks_*_*_*",
@@ -58,6 +60,8 @@ process.l1tNNTauProducerPuppi = l1tNNTauProducerPuppi.clone()
 from L1Trigger.Phase2L1ParticleFlow.l1tMETPFProducer_cfi import l1tMETPFProducer
 process.l1tMETPFProducer = l1tMETPFProducer.clone()
 
+from L1Trigger.Phase2L1ParticleFlow.TOoLLiPProducer_cff import l1tTOoLLiPProducer, L1TTOoLLiPTask
+process.l1tTOoLLiPProducer = l1tTOoLLiPProducer.clone()
 
 process.extraPFStuff = cms.Task(
         process.l1tPhase2L1CaloEGammaEmulator,
@@ -160,6 +164,22 @@ process.l1pfjetTable = cms.EDProducer("L1PFJetTableProducer",
     ),
 )
 
+
+process.l1pfjetTaggerTable = cms.EDProducer("L1PFJetTableProducer",
+    gen = cms.InputTag("ak4GenJetsNoNu"),
+    commonSel = cms.string("pt > 5 && abs(eta) < 5.0"),
+    drMax = cms.double(0.2),
+    minRecoPtOverGenPt = cms.double(0.1),
+    jets = cms.PSet(
+        scPuppiL1TTOOLLIPJet = cms.InputTag("l1tSC4PFL1PuppiExtendedCorrectedEmulator")
+    ),
+    moreVariables = cms.PSet(),
+    valueMaps = cms.PSet(
+        llpTagScore = cms.InputTag("l1tTOoLLiPProducerCorrectedEmulator", "L1PFLLPJets")
+    ),
+)
+
+
 process.l1pfmetTable = cms.EDProducer("L1PFMetTableProducer",
     genMet = cms.InputTag("genMetTrue"), 
     flavour = cms.string(""),
@@ -178,6 +198,7 @@ monitorPerf("L1Puppi", "l1tLayer1:Puppi")
 process.p = cms.Path(
         process.ntuple + #process.content +
         process.l1pfjetTable + 
+        process.l1pfjetTaggerTable +
         process.l1pfmetTable + process.l1pfmetCentralTable
         )
 process.p.associate(process.extraPFStuff)
@@ -293,12 +314,32 @@ def addNNPuppiTaus():
     process.extraPFStuff.add(process.l1tNNTauProducerPuppi)
     process.l1pfjetTable.jets.nnPuppiTau = cms.InputTag('l1tNNTauProducerPuppi', "L1PFTausNN")
 
+def addLLPtagging():
+
+    process.l1tTOoLLiPProducer.TOoLLiPVersion = cms.string(os.environ['CMSSW_BASE']+"/src/TOoLLiP/TOoLLiP_v3")
+    process.l1tTOoLLiPProducerCorrectedEmulator.TOoLLiPVersion = cms.string(os.environ['CMSSW_BASE']+"/src/TOoLLiP/TOoLLiP_v3")
+    #setattr(process.l1pfjetTaggerTable.moreVariables, "llpTagScore", cms.string("getTagScores()[0]"))
+
+
 def addSeededConeJets():
     process.extraPFStuff.add(process.L1TPFJetsTask)
+    process.extraPFStuff.add(process.L1TTOoLLiPTask)
+
+    process.extraPFStuff.add(process.L1TPFJetsExtendedTask)
+
+    process.extraPFStuff.add(process.l1tTOoLLiPProducer)
+
+   
+    #print("\n \n ============================= HELLOW ==================================== \n \n ")
+
     process.l1pfjetTable.jets.scPuppiSim = cms.InputTag('l1tSC4PFL1Puppi')
     process.l1pfjetTable.jets.scPuppi = cms.InputTag('l1tSC4PFL1PuppiEmulator')
     process.l1pfjetTable.jets.scPuppiCorr = cms.InputTag('l1tSC4PFL1PuppiCorrectedEmulator')
     process.l1pfmetTable.mets.scPuppiCorrMHT = cms.InputTag("l1tSC4PFL1PuppiCorrectedEmulatorMHT")
+
+    #process.l1pfjetTable.jets.TOoLLiP = cms.InputTag("l1tTOoLLiPProducer", "L1PFLLPJets")
+
+
 
 def addPhase1Jets():
     process.extraPFStuff.add(process.l1tPhase1JetProducer9x9, process.l1tPhase1JetCalibrator9x9, process.l1tPhase1JetSumsProducer9x9)
@@ -322,6 +363,7 @@ def addTkJets():
 
 def addAllJets():
     addSeededConeJets()
+    addLLPtagging()
     addPhase1Jets()
     addCaloJets()
     #addTkJets()
@@ -842,3 +884,5 @@ def saveGenCands():
                                            ),
                                       )
     process.p += process.gencandTable
+
+addAllJets()

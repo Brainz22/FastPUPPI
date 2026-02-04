@@ -5,6 +5,7 @@
 #include "FWCore/Framework/interface/Event.h"
 #include "DataFormats/Common/interface/Handle.h"
 #include "DataFormats/Common/interface/View.h"
+#include "DataFormats/Common/interface/ValueMap.h"
 
 #include "DataFormats/Candidate/interface/Candidate.h"
 
@@ -43,12 +44,22 @@ class L1PFJetTableProducer : public edm::global::EDProducer<>  {
                 std::string coll;
                 edm::EDGetTokenT<reco::CandidateView> src;
                 StringCutObjectSelector<reco::Candidate> sel;
-                
+
                 JetRecord(const std::string & name, const edm::EDGetTokenT<reco::CandidateView> & tag, const edm::ParameterSet & pset) :
-                    coll(name), src(tag), 
+                    coll(name), src(tag),
                     sel(pset.existsAs<std::string>(name+"_sel") ? pset.getParameter<std::string>(name+"_sel") : "", true) {}
         };
         std::vector<JetRecord> jets_;
+
+        struct ValueMapRecord {
+            public:
+                std::string name;
+                edm::EDGetTokenT<edm::ValueMap<float>> src;
+
+                ValueMapRecord(const std::string & n, const edm::EDGetTokenT<edm::ValueMap<float>> & tag) :
+                    name(n), src(tag) {}
+        };
+        std::vector<ValueMapRecord> valueMaps_;
 
         float minPt_, dr2Max_, minPtRatio_;
 };
@@ -71,6 +82,14 @@ L1PFJetTableProducer::L1PFJetTableProducer(const edm::ParameterSet& iConfig) :
         auto morenames = vars.getParameterNamesForType<std::string>();
         for (const std::string & name : morenames) {
             extraVars_.emplace_back(name, vars.getParameter<std::string>(name));
+        }
+    }
+
+    if (iConfig.existsAs<edm::ParameterSet>("valueMaps")) {
+        edm::ParameterSet vmaps = iConfig.getParameter<edm::ParameterSet>("valueMaps");
+        auto vmapnames = vmaps.getParameterNamesForType<edm::InputTag>();
+        for (const std::string & name : vmapnames) {
+            valueMaps_.emplace_back(name, consumes<edm::ValueMap<float>>(vmaps.getParameter<edm::InputTag>(name)));
         }
     }
  }
@@ -166,7 +185,27 @@ L1PFJetTableProducer::produce(edm::StreamID id, edm::Event& iEvent, const edm::E
             }
             out->addColumn<float>(evar.name, vals_pt, evar.expr);
         }
-        
+
+        // fill ValueMaps
+        for (const auto & vmap : valueMaps_) {
+            edm::Handle<edm::ValueMap<float>> vmapHandle;
+            iEvent.getByToken(vmap.src, vmapHandle);
+            for (unsigned int i = 0; i < njets; ++i) {
+                // Find the index of this jet in the original collection
+                size_t idx = 0;
+                for (size_t j = 0; j < src->size(); ++j) {
+                    if (&((*src)[j]) == selected[i]) {
+                        idx = j;
+                        break;
+                    }
+                }
+                // Create a proper reference using the collection and index
+                reco::CandidateBaseRef jetRef(src, idx);
+                vals_pt[i] = (*vmapHandle)[jetRef];
+            }
+            out->addColumn<float>(vmap.name, vals_pt, vmap.name + " score");
+        }
+
         // save to the event branches
         iEvent.put(std::move(out), jets.coll+"Jets");
 
