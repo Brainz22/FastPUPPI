@@ -318,7 +318,7 @@ def addLLPtagging():
 
     process.l1tTOoLLiPProducer.TOoLLiPVersion = cms.string(os.environ['CMSSW_BASE']+"/src/TOoLLiP/TOoLLiP_v3")
     process.l1tTOoLLiPProducerCorrectedEmulator.TOoLLiPVersion = cms.string(os.environ['CMSSW_BASE']+"/src/TOoLLiP/TOoLLiP_v3")
-    #setattr(process.l1pfjetTaggerTable.moreVariables, "llpTagScore", cms.string("getTagScores()[0]"))
+
 
 
 def addSeededConeJets():
@@ -329,16 +329,12 @@ def addSeededConeJets():
 
     process.extraPFStuff.add(process.l1tTOoLLiPProducer)
 
-   
-    #print("\n \n ============================= HELLOW ==================================== \n \n ")
+
 
     process.l1pfjetTable.jets.scPuppiSim = cms.InputTag('l1tSC4PFL1Puppi')
     process.l1pfjetTable.jets.scPuppi = cms.InputTag('l1tSC4PFL1PuppiEmulator')
     process.l1pfjetTable.jets.scPuppiCorr = cms.InputTag('l1tSC4PFL1PuppiCorrectedEmulator')
     process.l1pfmetTable.mets.scPuppiCorrMHT = cms.InputTag("l1tSC4PFL1PuppiCorrectedEmulatorMHT")
-
-    #process.l1pfjetTable.jets.TOoLLiP = cms.InputTag("l1tTOoLLiPProducer", "L1PFLLPJets")
-
 
 
 def addPhase1Jets():
@@ -371,8 +367,10 @@ def addAllJets():
 def addJetConstituents(N):
     for i in range(N): # save a max of N daughters (unfortunately 2D arrays are not yet supported in the NanoAOD output module)
         for var in "pt", "eta", "phi", "mass", "pdgId":
-            setattr(process.l1pfjetTable.moreVariables, "dau%d_%s" % (i,var), cms.string("? numberOfDaughters() > %d ? daughter(%d).%s : -1"  % (i,i,var)))
-        setattr(process.l1pfjetTable.moreVariables, "dau%d_%s" % (i,"vz"), cms.string("? numberOfDaughters() > %d ? daughter(%d).%s : -1"  % (i,i,"vertex.Z")))
+            setattr(process.l1pfjetTaggerTable.moreVariables, "dau%d_%s" % (i,var), cms.string("? numberOfDaughters() > %d ? daughter(%d).%s : -1"  % (i,i,var)))
+        setattr(process.l1pfjetTaggerTable.moreVariables, "dau%d_%s" % (i,"vz"), cms.string("? numberOfDaughters() > %d ? daughter(%d).%s : -1"  % (i,i,"vertex.Z")))
+        setattr(process.l1pfjetTaggerTable.moreVariables, "dau%d_%s" % (i,"vx"), cms.string("? numberOfDaughters() > %d ? daughter(%d).%s : -1"  % (i,i,"vertex.X")))
+        setattr(process.l1pfjetTaggerTable.moreVariables, "dau%d_%s" % (i,"vy"), cms.string("? numberOfDaughters() > %d ? daughter(%d).%s : -1"  % (i,i,"vertex.Y")))
 
 def addGenJetFlavourTable():
     process.load("PhysicsTools.JetMCAlgos.AK4PFJetsMCFlavourInfos_cfi")
@@ -886,3 +884,4 @@ def saveGenCands():
     process.p += process.gencandTable
 
 addAllJets()
+addJetConstituents(10)
