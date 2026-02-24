@@ -188,6 +188,19 @@ process.l1pfmetTable = cms.EDProducer("L1PFMetTableProducer",
 )
 process.l1pfmetCentralTable = process.l1pfmetTable.clone(genMet = "genMetCentralTrue", flavour = "Central")
 
+process.l1VertexTable = cms.EDProducer("VertexWordFlatTableProducer",
+    name = cms.string("L1Vtx"),
+    cut  = cms.string(""),
+    src = cms.InputTag("l1tVertexFinderEmulator","L1VerticesEmulation"),
+    doc = cms.string("Primary vertices reconstructed by L1T"),
+    singleton = cms.bool(False),
+    extension = cms.bool(False),
+    variables = cms.PSet(
+        sumpt = Var("pt",  float, precision=10),
+        z0    = Var("z0",  float, precision=16),
+    )
+)
+
 monitorPerf("L1Calo", "l1tLayer1:Calo")
 monitorPerf("L1TK",   "l1tLayer1:TK")
 monitorPerf("L1PF",    "l1tLayer1:PF")
@@ -197,12 +210,13 @@ monitorPerf("L1Puppi", "l1tLayer1:Puppi")
 #process.content = cms.EDAnalyzer("EventContentAnalyzer")
 process.p = cms.Path(
         process.ntuple + #process.content +
-        process.l1pfjetTable + 
+        process.l1pfjetTable +
         process.l1pfjetTaggerTable +
-        process.l1pfmetTable + process.l1pfmetCentralTable
+        process.l1pfmetTable + process.l1pfmetCentralTable +
+        process.l1VertexTable
         )
 process.p.associate(process.extraPFStuff)
-process.TFileService = cms.Service("TFileService", fileName = cms.string("perfTuple.root"))
+process.TFileService = cms.Service("TFileService", fileName = cms.string("w_perfTuple.root"))
 
 # for full debug:
 #process.out = cms.OutputModule("PoolOutputModule",
@@ -212,7 +226,7 @@ process.TFileService = cms.Service("TFileService", fileName = cms.string("perfTu
 #process.end = cms.EndPath(process.out)
 
 process.outnano = cms.OutputModule("NanoAODOutputModule",
-    fileName = cms.untracked.string("perfNano.root"),
+    fileName = cms.untracked.string("w_perfNano.root"),
     SelectEvents = cms.untracked.PSet(SelectEvents = cms.vstring('p')),
     outputCommands = cms.untracked.vstring("drop *", "keep nanoaodFlatTable_*Table_*_*"),
     compressionLevel = cms.untracked.int32(4),
@@ -367,10 +381,13 @@ def addAllJets():
 def addJetConstituents(N):
     for i in range(N): # save a max of N daughters (unfortunately 2D arrays are not yet supported in the NanoAOD output module)
         for var in "pt", "eta", "phi", "mass", "pdgId":
-            setattr(process.l1pfjetTaggerTable.moreVariables, "dau%d_%s" % (i,var), cms.string("? numberOfDaughters() > %d ? daughter(%d).%s : -1"  % (i,i,var)))
-        setattr(process.l1pfjetTaggerTable.moreVariables, "dau%d_%s" % (i,"vz"), cms.string("? numberOfDaughters() > %d ? daughter(%d).%s : -1"  % (i,i,"vertex.Z")))
-        setattr(process.l1pfjetTaggerTable.moreVariables, "dau%d_%s" % (i,"vx"), cms.string("? numberOfDaughters() > %d ? daughter(%d).%s : -1"  % (i,i,"vertex.X")))
-        setattr(process.l1pfjetTaggerTable.moreVariables, "dau%d_%s" % (i,"vy"), cms.string("? numberOfDaughters() > %d ? daughter(%d).%s : -1"  % (i,i,"vertex.Y")))
+            setattr(process.l1pfjetTaggerTable.moreVariables, "dau%d_%s" % (i,var), cms.string("? numberOfDaughters() > %d ? daughter(%d).%s : 0"  % (i,i,var)))
+        #setattr(process.l1pfjetTaggerTable.moreVariables, "dau%d_%s" % (i,"vz"), cms.string("? numberOfDaughters() > %d ? daughter(%d).%s : 0"  % (i,i,"vertex.Z")))
+        #setattr(process.l1pfjetTaggerTable.moreVariables, "dau%d_%s" % (i,"vx"), cms.string("? numberOfDaughters() > %d ? daughter(%d).%s : 0"  % (i,i,"vertex.X")))
+        #setattr(process.l1pfjetTaggerTable.moreVariables, "dau%d_%s" % (i,"vy"), cms.string("? numberOfDaughters() > %d ? daughter(%d).%s : 0"  % (i,i,"vertex.Y")))
+        setattr(process.l1pfjetTaggerTable.moreVariables, "dau%d_%s" % (i,"vz"), cms.string("? numberOfDaughters() > %d && daughter(%d).pfTrack.isNonnull ? daughter(%d).%s : 0"  % (i,i,i,"pfTrack.vz")))
+        setattr(process.l1pfjetTaggerTable.moreVariables, "dau%d_%s" % (i,"vx"), cms.string("? numberOfDaughters() > %d && daughter(%d).pfTrack.isNonnull ? daughter(%d).%s : 0"  % (i,i,i,"pfTrack.vx")))
+        setattr(process.l1pfjetTaggerTable.moreVariables, "dau%d_%s" % (i,"vy"), cms.string("? numberOfDaughters() > %d && daughter(%d).pfTrack.isNonnull ? daughter(%d).%s : 0"  % (i,i,i,"pfTrack.vy")))
 
 def addGenJetFlavourTable():
     process.load("PhysicsTools.JetMCAlgos.AK4PFJetsMCFlavourInfos_cfi")
