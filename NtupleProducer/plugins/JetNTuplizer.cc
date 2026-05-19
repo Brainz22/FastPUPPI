@@ -15,6 +15,26 @@
 //         Created:  Thu, 01 Sep 2016 11:30:38 GMT
 //
 //
+// **************************** For Newcomers ***************************
+
+// JetNTuplizer inherits from edm::one::EDAnalyzer. 
+//This is a CMSSW base class that defines a virtual analyze() method. 
+//The CMSSW framework internally calls analyze() for every event it reads from the input file — your plugin 
+// just overrides it with its own implementation.
+
+// So the call chain is:
+
+// 1. cmsRun runJetNTuple.py starts the CMSSW framework
+// 2. The framework reads events from the input ROOT file one by one
+// 3. For each event, the framework calls JetNTuplizer::analyze(event, setup) automatically
+// 4. Inside analyze(), the jet loop runs and tree_->Fill() is called once per jet
+
+// You never see an explicit analyze() call 
+// in the code because CMSSW handles that through C++ polymorphism — the framework holds a pointer to 
+// the base class EDAnalyzer and calls its virtual analyze(), 
+// which resolves to your override at runtime.
+
+// **************************** For Newcomers ***************************
 
 // user include files
 #include "FWCore/Framework/interface/Frameworkfwd.h"
@@ -46,6 +66,7 @@
 #include "CommonTools/Utils/interface/StringCutObjectSelector.h"
 
 #include "DataFormats/L1TParticleFlow/interface/PFCandidate.h"
+#include "DataFormats/L1TParticleFlow/interface/PFCluster.h"
 #include "DataFormats/L1TParticleFlow/interface/PFJet.h"
 #include "DataFormats/L1TParticleFlow/interface/PFTau.h"
 #include "DataFormats/L1TParticleFlow/interface/jets.h"
@@ -74,7 +95,7 @@
 #include "DataFormats/L1TParticleFlow/interface/datatypes.h"
 #include "L1Trigger/Phase2L1ParticleFlow/interface/jetmet/L1SeedConePFJetEmulator.h"
 
-const bool debug = false;
+const bool debug = true;
 
 // some tools to fix inputs or calculate them
 namespace jettools{
@@ -1223,7 +1244,7 @@ JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
                std::cout<<"**************************************************************************"<<std::endl;
             }
 
-            if(pos_matched >= 0){
+            if(pos_matched >= 0){ //If a position for the matched daughter is found, flag it with 1
                jet_pfcand_genmatch_llp.push_back(1);
                const int llpIndex = LLP_daughter_parentIndex_.at(pos_matched);
                const float llpGenCtau =
@@ -1385,56 +1406,44 @@ JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
                 jet_pfcand_track_vz.push_back(0);
                 jet_pfcand_track_pterror.push_back(0);
                 jet_pfcand_dxy_custom.push_back(0);
-            }	  
+            }	
+            // const l1t::PFClusterRef cluster = pfcand.pfCluster();    
 
-            const l1t::PFClusterRef cluster = pfcand.pfCluster();    
+            // if(cluster.isNonnull()){ // need valid cluster object
 
-            if(cluster.isNonnull()){ // need valid cluster object
+            //     jet_pfcand_cluster_isfilled.push_back(1);
+            //     jet_pfcand_cluster_hovere.push_back(cluster->hOverE());
+            //     jet_pfcand_cluster_sigmarr.push_back(cluster->sigmaRR());
+            //     jet_pfcand_cluster_abszbarycenter.push_back(cluster->absZBarycenter());
+            //     jet_pfcand_cluster_emet.push_back(cluster->emEt());
+            //     jet_pfcand_cluster_egvspion.push_back(cluster->egVsPionMVAOut());
+            //     jet_pfcand_cluster_egvspu.push_back(cluster->egVsPUMVAOut());
 
-                jet_pfcand_cluster_isfilled.push_back(1);
-                jet_pfcand_cluster_hovere.push_back(cluster->hOverE());
-                jet_pfcand_cluster_sigmarr.push_back(cluster->sigmaRR());
-                jet_pfcand_cluster_abszbarycenter.push_back(cluster->absZBarycenter());
-                jet_pfcand_cluster_emet.push_back(cluster->emEt());
-                jet_pfcand_cluster_egvspion.push_back(cluster->egVsPionMVAOut());
-                jet_pfcand_cluster_egvspu.push_back(cluster->egVsPUMVAOut());
+            // }else{
 
-            }else{
+  
 
-                jet_pfcand_cluster_isfilled.push_back(0);
-                jet_pfcand_cluster_hovere.push_back(0);
-                jet_pfcand_cluster_sigmarr.push_back(0);
-                jet_pfcand_cluster_abszbarycenter.push_back(0);
-                jet_pfcand_cluster_emet.push_back(0);
-                jet_pfcand_cluster_egvspion.push_back(0);
-                jet_pfcand_cluster_egvspu.push_back(0);
-
-            }
+            // pfCluster() and cluster ID methods removed in CMSSW 15.1
+            jet_pfcand_cluster_isfilled.push_back(0);
+            jet_pfcand_cluster_hovere.push_back(0);
+            jet_pfcand_cluster_sigmarr.push_back(0);
+            jet_pfcand_cluster_abszbarycenter.push_back(0);
+            jet_pfcand_cluster_emet.push_back(0);
+            jet_pfcand_cluster_egvspion.push_back(0);
+            jet_pfcand_cluster_egvspu.push_back(0);
         }
 
-        // derive jet-level LLP match from constituent matches: any matched pfcand -> jet matches
-        int chosenDaughter = -1;
-        for (size_t pIndex = 0; pIndex < selectedPfcands.size(); pIndex++) {
-            const int dIdx = matchedDaughterForPfcand[pIndex];
-            if (dIdx < 0) continue;
-            if (chosenDaughter < 0) chosenDaughter = dIdx;  // take the first matched daughter
-        }
-
-        if (chosenDaughter >= 0) {
-            jet_doesmatch_genLLPDecay_ = true;
-            const int llpIndex = LLP_daughter_parentIndex_.at(chosenDaughter);
-            jet_genmatch_llp_gllp_ctau_ =
-                (llpIndex >= 0 && llpIndex < static_cast<int>(LLP_ctau_.size())) ? LLP_ctau_.at(llpIndex) : -999.f;
-            if (debug) {
-                const auto &bestDaughter = LLP_daughter_.at(chosenDaughter);
-                std::cout << "[jet-level LLP via pfcands] event " << event_ << " jet " << i
-                          << " matched daughter pt/eta/phi: " << bestDaughter.pt() << " / " << bestDaughter.eta()
-                          << " / " << bestDaughter.phi() << " | parent ctau: " << jet_genmatch_llp_gllp_ctau_ 
-                          << std::endl;
+        // derive jet-level LLP match: any LLP daughter within dR < dRJetGenMatch_ of the jet axis
+        jet_doesmatch_genLLPDecay_ = false;
+        jet_genmatch_llp_gllp_ctau_ = -999;
+        for (size_t dIdx = 0; dIdx < LLP_daughter_.size(); dIdx++) {
+            if (reco::deltaR(LLP_daughter_[dIdx].p4(), jetv_l1[i]->p4()) < dRJetGenMatch_) {
+                jet_doesmatch_genLLPDecay_ = true;
+                const int llpIndex = LLP_daughter_parentIndex_.at(dIdx);
+                jet_genmatch_llp_gllp_ctau_ =
+                    (llpIndex >= 0 && llpIndex < static_cast<int>(LLP_ctau_.size())) ? LLP_ctau_.at(llpIndex) : -999.f;
+                break;
             }
-        } else {
-            jet_doesmatch_genLLPDecay_ = false;
-            jet_genmatch_llp_gllp_ctau_ = -999;
         }
 
         tree_->Fill();

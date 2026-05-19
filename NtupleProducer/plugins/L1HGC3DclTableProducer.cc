@@ -93,18 +93,18 @@ L1HGC3DclTableProducer::produce(edm::Event& iEvent, const edm::EventSetup& iSetu
     for (unsigned int i = 0; i < ncands; ++i) {
         auto cl3d = *selected[i];
 
-        l1t::PFCluster cluster;
+        float mvaOutPU = 0, mvaOutPion = 0;
         bool passEmVsPU = false;
         bool passPFEmVsPion = false;
         if (!emVsPUID_.method().empty()) {
-            passEmVsPU = emVsPUID_.passID(cl3d, cluster);
+            passEmVsPU = emVsPUID_.passID(cl3d, mvaOutPU);
         }
         if (!emVsPionID_.method().empty()) {
-            passPFEmVsPion = emVsPionID_.passID(cl3d, cluster);
+            passPFEmVsPion = emVsPionID_.passID(cl3d, mvaOutPion);
         }
 
-        vals_puid[i] = cluster.egVsPUMVAOut();
-        vals_pfemid[i] = cluster.egVsPionMVAOut();
+        vals_puid[i] = mvaOutPU;
+        vals_pfemid[i] = mvaOutPion;
         vals_egemid[i] = id_->value(cl3d);
         pass_puid[i] = passEmVsPU;
         pass_pfemid[i] = passPFEmVsPion;

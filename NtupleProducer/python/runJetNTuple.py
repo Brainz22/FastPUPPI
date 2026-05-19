@@ -11,7 +11,10 @@ process.load("FWCore.MessageLogger.MessageLogger_cfi")
 process.options   = cms.untracked.PSet( wantSummary = cms.untracked.bool(False), allowUnscheduled = cms.untracked.bool(False) )
 process.maxEvents = cms.untracked.PSet( input = cms.untracked.int32(-1))
 process.MessageLogger.cerr.FwkReport.reportEvery = 1
-inputMC = ['file:inputs140X.root']
+#inputMC = ['file:inputs140X.root']
+#inputMC = ['file:/eos/user/r/russelld/fpinputs/HiddenGluGluH_mH125_Phi30_ctau10_cccc_PU200/INFP/v151Xv1/inputs151X_10571629_21.root']
+inputMC = ['file:/eos/cms/store/cmst3/group/l1tr/FastPUPPI/15_1_X/fpinputs_140X/v1/QCD_Pt-15To3000_TuneCP5_Flat_14TeV-pythia8/QCD_Pt15To3000_PU200_151Xv0/250919_143646/0000/inputs151X_10.root']
+#inputMC = ['file:/eos/cms/store/cmst3/group/l1tr/FastPUPPI/14_2_X/fpinputs_140X/v0/QCD_Pt30To50_PU200/inputs140X_46.root']
 process.source = cms.Source("PoolSource",
     fileNames = cms.untracked.vstring(*inputMC),
     inputCommands = cms.untracked.vstring("keep *", 
@@ -44,8 +47,17 @@ process.l1tTrackSelectionProducer.processSimulatedTracks = False
 from L1Trigger.L1CaloTrigger.l1tPhase2L1CaloEGammaEmulator_cfi import l1tPhase2L1CaloEGammaEmulator
 process.l1tPhase2L1CaloEGammaEmulator = l1tPhase2L1CaloEGammaEmulator.clone()
 
+from L1Trigger.L1CaloTrigger.l1tPhase2GCTBarrelToCorrelatorLayer1Emulator_cfi import l1tPhase2GCTBarrelToCorrelatorLayer1Emulator
+process.l1tPhase2GCTBarrelToCorrelatorLayer1Emulator = l1tPhase2GCTBarrelToCorrelatorLayer1Emulator.clone()
+
+
+# from L1Trigger.Phase2L1ParticleFlow.L1NNTauProducer_cff import l1tNNTauProducerPuppi
+# process.l1tNNTauProducerPuppi = l1tNNTauProducerPuppi.clone()
+
 process.extraPFStuff = cms.Task(
         process.l1tPhase2L1CaloEGammaEmulator,
+        process.l1tPhase2CaloPFClusterEmulator,
+        process.l1tPhase2GCTBarrelToCorrelatorLayer1Emulator,
         process.l1tSAMuonsGmt,
         process.l1tGTTInputProducer,
         process.l1tTrackSelectionProducer,
@@ -54,7 +66,7 @@ process.extraPFStuff = cms.Task(
         process.L1TLayer1Task,
         process.L1TLayer2EGTask)
 
-def addJetNTuple(trktype = "extended", nparam = 5, tagged = True):
+def addJetNTuple(trktype = "extended", nparam = 5, tagged = False):
     # create new jet tupler
     jetColl = "l1tSC4PFL1PuppiExtendedEmulator"
     jetCollCorr = "l1tSC4PFL1PuppiExtendedEmulator"
@@ -81,7 +93,7 @@ def addJetNTuple(trktype = "extended", nparam = 5, tagged = True):
         muons = cms.InputTag("l1tSAMuonsGmt","promptSAMuons"),
     )
     process.endTuple = cms.EndPath(process.outnano)
-    outName = "jetTuple_"+trktype+"_"+str(nparam)+".root"
+    outName = "test_QCD_jetTuple_"+trktype+"_"+str(nparam)+".root"
     process.TFileService = cms.Service("TFileService", fileName = cms.string(outName))
 
 # to check available tags:
@@ -136,8 +148,8 @@ if True:
     trktype = "extended"
     nparam = 5
     addSeededConeJets()
-    addMultitagging(trktype = trktype)
-    addBtagging(("l1tSC4NGJetProducer","l1tSC4NGJets"))
+    #addMultitagging(trktype = trktype)
+    addBtagging("l1tSC4PFL1PuppiExtendedEmulator")
     addNNPuppiTaus()
     addGenJetFlavourTable()
     addJetNTuple(trktype = trktype, nparam = nparam)
