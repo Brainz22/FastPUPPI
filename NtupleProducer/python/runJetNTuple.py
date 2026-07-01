@@ -12,8 +12,10 @@ process.options   = cms.untracked.PSet( wantSummary = cms.untracked.bool(False),
 process.maxEvents = cms.untracked.PSet( input = cms.untracked.int32(-1))
 process.MessageLogger.cerr.FwkReport.reportEvery = 1
 #inputMC = ['file:inputs140X.root']
+inputMC = ['file:inputs151X_HiddenGluGluH_mH125_Phi30_ctau10_uuuu_PU200.root']
 #inputMC = ['file:/eos/user/r/russelld/fpinputs/HiddenGluGluH_mH125_Phi30_ctau10_cccc_PU200/INFP/v151Xv1/inputs151X_10571629_21.root']
-inputMC = ['file:/eos/cms/store/cmst3/group/l1tr/FastPUPPI/15_1_X/fpinputs_140X/v1/QCD_Pt-15To3000_TuneCP5_Flat_14TeV-pythia8/QCD_Pt15To3000_PU200_151Xv0/250919_143646/0000/inputs151X_10.root']
+#inputMC = ['file:/eos/cms/store/cmst3/group/l1tr/FastPUPPI/15_1_X/fpinputs_140X/v1/QCD_Pt-15To3000_TuneCP5_Flat_14TeV-pythia8/QCD_Pt15To3000_PU200_151Xv0/250919_143646/0000/inputs151X_10.root']
+#inputMC = ['file:/ceph/cms/store/group/LLPs/russelld/fpinputs/HiddenGluGluH_mH125_Phi30_ctau10_uuuu_PU200/INFP/v151Xv1/inputs151X_352066_0.root'] # UCSD UAF
 #inputMC = ['file:/eos/cms/store/cmst3/group/l1tr/FastPUPPI/14_2_X/fpinputs_140X/v0/QCD_Pt30To50_PU200/inputs140X_46.root']
 process.source = cms.Source("PoolSource",
     fileNames = cms.untracked.vstring(*inputMC),
@@ -93,7 +95,7 @@ def addJetNTuple(trktype = "extended", nparam = 5, tagged = False):
         muons = cms.InputTag("l1tSAMuonsGmt","promptSAMuons"),
     )
     process.endTuple = cms.EndPath(process.outnano)
-    outName = "test_QCD_jetTuple_"+trktype+"_"+str(nparam)+".root"
+    outName = "test_jetTuple_"+trktype+"_"+str(nparam)+".root"
     process.TFileService = cms.Service("TFileService", fileName = cms.string(outName))
 
 # to check available tags:

@@ -95,7 +95,8 @@
 #include "DataFormats/L1TParticleFlow/interface/datatypes.h"
 #include "L1Trigger/Phase2L1ParticleFlow/interface/jetmet/L1SeedConePFJetEmulator.h"
 
-const bool debug = true;
+const bool debug = false;
+const bool debug2 = false;
 
 // some tools to fix inputs or calculate them
 namespace jettools{
@@ -781,7 +782,10 @@ JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
     sort(muonv_l1.begin(), muonv_l1.end(), muonRefSorter);
     
     std::vector<bool> matched(jetv_gen.size(), false);        
+    
     // loop over reco jets
+
+    std::vector<int> bannedDaughters = {};
     for (size_t i = 0; i < jetv_l1.size(); i++) {
         l1ct::Jet ctJet = l1ct::Jet::unpack(jetv_l1[i]->getHWJetCT());
         std::vector<float> tagScores = jetv_l1[i]->getTagScores();
@@ -1436,9 +1440,28 @@ JetNTuplizer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
         // derive jet-level LLP match: any LLP daughter within dR < dRJetGenMatch_ of the jet axis
         jet_doesmatch_genLLPDecay_ = false;
         jet_genmatch_llp_gllp_ctau_ = -999;
+        
+        if (bannedDaughters.size() == 4){
+            std::cout << "\n====================================";
+            std::cout << "All 4 daughters per event were matched";
+            std::cout << "====================================\n";
+        }
+
         for (size_t dIdx = 0; dIdx < LLP_daughter_.size(); dIdx++) {
+            auto it = std::find(bannedDaughters.begin(), bannedDaughters.end(), dIdx);
+            if (it != bannedDaughters.end()) {
+                break; //break loop if a daughter was banned/used
+            } 
             if (reco::deltaR(LLP_daughter_[dIdx].p4(), jetv_l1[i]->p4()) < dRJetGenMatch_) {
                 jet_doesmatch_genLLPDecay_ = true;
+                bannedDaughters.push_back(dIdx);
+                if (debug2){
+                    std::cout << "\n====================================";
+                    std::cout << "\nJet matched to LLP at event: " << event_;
+                    std::cout << "\nTotal number of jets at event: " << jetv_l1.size();
+                    std::cout << "\nJet number is " << i << " # banned daughters: " << bannedDaughters.size();
+                    std::cout << "\n====================================\n";
+                }
                 const int llpIndex = LLP_daughter_parentIndex_.at(dIdx);
                 jet_genmatch_llp_gllp_ctau_ =
                     (llpIndex >= 0 && llpIndex < static_cast<int>(LLP_ctau_.size())) ? LLP_ctau_.at(llpIndex) : -999.f;
